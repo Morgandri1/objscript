@@ -19,5 +19,16 @@ export type Step =
   | ({ type: "done" } & RunResult)
   | { type: "suspend"; path: string; args: Record<string, unknown> };
 export type ReplayEntry = { path: string; ok: unknown } | { path: string; err: string };
+export type SourceInput = Source | string;
 export type Source = { name?: string; version?: number; imports?: Record<string, string>;[k: string]: unknown };
 export const isFilePath = (s: string) => s.startsWith("/") || s.startsWith("./") || s.startsWith("../");
+export function toSource(input: SourceInput): Source {
+  return typeof input === "string" ? (JSON.parse(input) as Source) : input;
+}
+
+export interface ModuleOptions {
+  /** Canonical identity. Defaults to `name`. Use a file path or row id if you want path imports. */
+  key?: string;
+  /** Folder that relative imports inside this module resolve against. */
+  baseDir?: string;
+}

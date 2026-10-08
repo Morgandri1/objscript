@@ -1,5 +1,15 @@
 import type { Capability } from "./capabilities";
-import { type Limits, type RunResult, type ReplayEntry, type CheckFailure, type Step, type Source, isFilePath } from "./types";
+import type {
+  Limits,
+  RunResult,
+  ReplayEntry,
+  CheckFailure,
+  Step,
+  Source,
+  SourceInput,
+  ModuleOptions
+} from "./types";
+import { isFilePath, toSource } from "./types"
 import { compile, type Compiled } from "../pkg/objscript_wasm";
 import { readFile } from "node:fs/promises";
 import { dirname, resolve as resolvePath } from "node:path";
@@ -14,7 +24,7 @@ export class ObjScriptInterpreter<C = undefined> {
   /** path -> handler. Must match what the WASM side grants, or checks/runs will fail. */
   private capabilities: Record<string, Capability<C>>;
   /** canonical key (absolute file path, or name for in-memory modules) -> module */
-  private modules = new Map<string, { source: Source; baseDir: string }>();
+  private modules = new Map<string, { source: Source; baseDir?: string }>();
   /** "@org/pkg/name" and "@org/pkg/name@N" -> canonical key */
   private byName = new Map<string, string>();
   private limits: Limits;
@@ -39,15 +49,31 @@ export class ObjScriptInterpreter<C = undefined> {
     return this;
   }
 
-  /** Register an in-memory module. It must have a `name`. */
-  addModule(source: Source): this {
-    if (!source.name) throw new Error("addModule: in-memory modules need a `name`");
-    this.register(source.name, source, process.cwd());
+  /** Register a library module from any source. Re-adding the same key replaces it. */
+  addModule(input: SourceInput, opts: ModuleOptions = {}): this {
+    const source = toSource(input);
+    const key = opts.key ?? source.name;
+    if (!key) throw new Error("addModule: module needs a `name` or an explicit `key`");
+    this.register(key, source, opts?.baseDir);
     return this;
   }
 
-  check(script: Source, baseDir = process.cwd()): { ok: true } | CheckFailure {
-    const c = this.compile(script, baseDir);
+  addModules(inputs: SourceInput[]): this {
+    for (const input of inputs) this.addModule(input);
+    return this;
+  }
+
+  /** Remove a module by key or name. */
+  removeModule(keyOrName: string): this {
+    const key = this.byName.get(keyOrName) ?? keyOrName;
+    this.modules.delete(key);
+    for (const [name, k] of this.byName) if (k === key) this.byName.delete(name);
+    this.cache.clear();
+    return this;
+  }
+
+  check(script: SourceInput, opts: { baseDir?: string } = {}): { ok: true } | CheckFailure {
+    const c = this.compile(toSource(script), opts.baseDir);
     return "errors" in c ? c : { ok: true };
   }
 
@@ -64,11 +90,11 @@ export class ObjScriptInterpreter<C = undefined> {
 
   /** `inputs` are keyed by the script's `params`; `value` is whatever it returns. */
   async run<T = unknown>(
-    script: Source,
+    script: SourceInput,
     inputs: Record<string, unknown> = {},
     opts: RunOptions<C> & { baseDir?: string } = {},
   ): Promise<RunResult<T>> {
-    const compiled = this.compile(script, opts.baseDir ?? process.cwd());
+    const compiled = this.compile(toSource(script), opts.baseDir);
     if ("errors" in compiled) return compiled;
 
     const inputsJson = JSON.stringify(inputs);
@@ -95,7 +121,7 @@ export class ObjScriptInterpreter<C = undefined> {
     }
   }
 
-  private register(key: string, source: Source, baseDir: string) {
+  private register(key: string, source: Source, baseDir?: string) {
     const names = source.name ? [source.name, ...(source.version ? [`${source.name}@${source.version}`] : [])] : [];
     for (const n of names) {
       const existing = this.byName.get(n);
@@ -107,18 +133,19 @@ export class ObjScriptInterpreter<C = undefined> {
   }
 
   /** Rewrite every module import to its canonical key; unknown ones are left for the checker to report. */
-  private resolve(source: Source, baseDir: string): Source {
+  private resolve(source: Source, baseDir?: string): Source {
     if (!source.imports) return source;
     const imports: Record<string, string> = {};
     for (const [alias, spec] of Object.entries(source.imports)) {
-      if (spec.startsWith("std/")) imports[alias] = spec;
-      else if (isFilePath(spec)) imports[alias] = resolvePath(baseDir, spec);
+      if (spec.startsWith("host/")) imports[alias] = spec;
+      else if (spec.startsWith("/")) imports[alias] = spec;
+      else if (isFilePath(spec)) imports[alias] = baseDir ? resolvePath(baseDir, spec) : spec;
       else imports[alias] = this.byName.get(spec) ?? spec;
     }
     return { ...source, imports };
   }
 
-  private compile(script: Source, baseDir: string): Compiled | CheckFailure {
+  private compile(script: Source, baseDir?: string): Compiled | CheckFailure {
     const key = JSON.stringify(this.resolve(script, baseDir));
     const hit = this.cache.get(key);
     if (hit) return hit;
