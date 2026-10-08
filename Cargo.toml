@@ -1,0 +1,20 @@
+[workspace]
+members = ["wasm"]
+
+[package]
+name = "objscript"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = ["cli"]
+cli = ["dep:ureq"]
+
+[dependencies]
+serde_json = { version = "1", features = ["preserve_order"] }
+ureq = { version = "2", optional = true }
+
+[[bin]]
+name = "objscript"
+path = "src/main.rs"
+required-features = ["cli"]

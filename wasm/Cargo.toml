@@ -1,0 +1,19 @@
+[package]
+name = "objscript-wasm"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+objscript = { path = "..", default-features = false }
+serde_json = { version = "1", features = ["preserve_order"] }
+wasm-bindgen = { version = "0.2" }
+js-sys = "0.3"    
+
+[profile.release]
+opt-level = "s"     # optimize for size ("z" is even smaller)
+lto = true
+codegen-units = 1
+panic = "abort"     # smaller binary, no unwinding

@@ -1,0 +1,8 @@
+{
+  "objscript": "0.2",
+  "description": "Never terminates. Should die with out_of_fuel, not hang the bot.",
+  "returns": "null",
+  "body": [
+    { "while": true, "do": [] }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "objscript": "0.2",
+  "imports": { "fetch": "host/http/fetch" },
+  "params": { "url": "string" },
+  "returns": "json",
+  "body": [
+    { "let": "res", "value": { "call": "fetch", "args": { "url": { "ref": "url" } } } },
+    { "return": { "get": { "ref": "res" }, "at": "body" } }
+  ]
+}

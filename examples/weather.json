@@ -1,0 +1,43 @@
+{
+  "$schema": "../schema/objscript.schema.json",
+  "objscript": "0.2",
+  "description": "Replies with the current weather for a US zip code.",
+  "command": { "name": "weather", "description": "Current weather by zip code" },
+  "imports": {
+    "getWeather": "@morgan/tools/getWeather@1",
+    "secret": "host/secret",
+    "reply": "host/discord/reply"
+  },
+  "params": {
+    "zipCode": { "type": "string", "description": "5-digit US zip code" }
+  },
+  "returns": "null",
+  "body": [
+    { "let": "w", "value": { "call": "getWeather", "args": {
+      "apiKey": { "call": "secret", "args": { "name": "WEATHER_API_KEY" } },
+      "zipCode": { "ref": "zipCode" }
+    }}},
+    { "do": { "call": "reply", "args": { "content": { "call": "concat", "args": [
+      "Currently in ", { "ref": "zipCode" }, ": ",
+      { "get": { "ref": "w" }, "at": "summary" }, ", ",
+      { "get": { "ref": "w" }, "at": "tempF" }, "°F"
+    ]}}}},
+    { "return": null }
+  ],
+  "tests": [
+    {
+      "name": "formats the reply",
+      "args": { "zipCode": "10001" },
+      "mocks": {
+        "secret": "test-key",
+        "getWeather": { "summary": "Sunny", "tempF": 71.5 }
+      },
+      "expect": null,
+      "expectCalls": [
+        { "secret": { "name": "WEATHER_API_KEY" } },
+        { "getWeather": { "apiKey": "test-key", "zipCode": "10001" } },
+        { "reply": { "content": "Currently in 10001: Sunny, 71.5°F" } }
+      ]
+    }
+  ]
+}

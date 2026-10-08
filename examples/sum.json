@@ -1,0 +1,20 @@
+{
+  "$schema": "../schema/objscript.schema.json",
+  "objscript": "0.2",
+  "description": "Sum of 1..n. Exists to prove loops + mutation work.",
+  "params": { "n": { "type": "int", "description": "Upper bound, inclusive" } },
+  "returns": "int",
+  "body": [
+    { "let": "i", "mut": true, "value": 0 },
+    { "let": "acc", "mut": true, "value": 0 },
+    { "while": { "call": "lt", "args": [{ "ref": "i" }, { "ref": "n" }] }, "do": [
+      { "set": "i", "value": { "call": "add", "args": [{ "ref": "i" }, 1] } },
+      { "set": "acc", "value": { "call": "add", "args": [{ "ref": "acc" }, { "ref": "i" }] } }
+    ]},
+    { "return": { "ref": "acc" } }
+  ],
+  "tests": [
+    { "name": "sums to ten", "args": { "n": 10 }, "expect": 55 },
+    { "name": "zero", "args": { "n": 0 }, "expect": 0 }
+  ]
+}

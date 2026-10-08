@@ -1,0 +1,15 @@
+{
+  "objscript": "0.2",
+  "description": "Deliberately wrong. `objscript check` should report every problem at once.",
+  "imports": { "ban": "host/discord/ban" },
+  "params": { "count": "int" },
+  "returns": "int",
+  "body": [
+    { "let": "label", "value": { "call": "add", "args": ["total: ", 1] } },
+    { "set": "count", "value": 5 },
+    { "do": { "call": "reply", "args": { "content": { "ref": "zip" } } } },
+    { "if": { "call": "gt", "args": [{ "ref": "count" }, 0] }, "then": [
+      { "return": "not an int" }
+    ]}
+  ]
+}

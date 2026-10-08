@@ -1,0 +1,29 @@
+{
+  "objscript": "0.2",
+  "name": "@morgan/tools/getWeather",
+  "description": "Current weather for a US zip code (OpenWeatherMap).",
+  "imports": { "fetch": "host/http/fetch" },
+  "params": { "zipCode": "string", "apiKey": "string" },
+  "returns": { "rec": { "summary": "string", "tempF": "float" } },
+  "body": [
+    { "let": "res", "value": { "call": "fetch", "args": {
+      "url": "https://api.openweathermap.org/data/2.5/weather",
+      "query": { "rec": {
+        "zip": { "call": "concat", "args": [{ "ref": "zipCode" }, ",us"] },
+        "appid": { "ref": "apiKey" },
+        "units": "imperial"
+      }}
+    }}},
+    { "let": "data", "value": {
+      "decode": { "get": { "ref": "res" }, "at": "body" },
+      "as": { "rec": {
+        "main": { "rec": { "temp": "float" } },
+        "weather": { "list": { "rec": { "description": "string" } } }
+      }}
+    }},
+    { "return": { "rec": {
+      "summary": { "get": { "get": { "get": { "ref": "data" }, "at": "weather" }, "at": 0 }, "at": "description" },
+      "tempF":   { "get": { "get": { "ref": "data" }, "at": "main" }, "at": "temp" }
+    }}}
+  ]
+}
