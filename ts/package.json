@@ -1,9 +1,11 @@
 {
   "name": "objscript",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "type": "module",
   "module": "src/index.ts",
-  "exports": { ".": "./src/index.ts" },
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
     "build:wasm": "cd ../wasm && wasm-pack build --target nodejs --out-dir ../ts/pkg",
     "typecheck": "tsc --noEmit",
