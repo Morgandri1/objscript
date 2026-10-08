@@ -1,7 +1,6 @@
 import type { Capability } from "./capabilities";
 import { type Limits, type RunResult, type ReplayEntry, type CheckFailure, type Step, type Source, isFilePath } from "./types";
-import { compile, type Compiled } from "../../pkg/objscript_wasm";
-
+import { compile, type Compiled } from "../pkg/objscript_wasm";
 import { readFile } from "node:fs/promises";
 import { dirname, resolve as resolvePath } from "node:path";
 

@@ -1,0 +1,54 @@
+name: release
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Rust tests
+        run: cargo test
+
+      - name: Build WASM
+        run: wasm-pack build wasm --target nodejs --out-dir ../ts/pkg
+
+      - name: TS typecheck + tests
+        working-directory: ts
+        run: |
+          bun install
+          bun run typecheck
+          bun test
+
+      - name: Assemble package
+        run: |
+          # wasm-pack writes a .gitignore of "*" into pkg/, which would stop it being committed
+          rm -f ts/pkg/.gitignore ts/pkg/package.json ts/pkg/README.md
+          mkdir dist
+          cp -R ts/src ts/pkg ts/package.json dist/
+          cp -R schema dist/
+
+      - name: Publish to dist branch
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: dist
+          publish_dir: ./dist
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && format('dist-{0}', github.ref_name) || '' }}
