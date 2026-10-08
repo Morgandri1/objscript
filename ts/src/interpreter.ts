@@ -10,7 +10,7 @@ import type {
   ModuleOptions
 } from "./types";
 import { isFilePath, toSource } from "./types"
-import { compile, type Compiled } from "../pkg/objscript_wasm";
+import { builtins, compile, type Compiled } from "../pkg/objscript_wasm";
 import { readFile } from "node:fs/promises";
 import { dirname, resolve as resolvePath } from "node:path";
 
@@ -18,6 +18,8 @@ export interface RunOptions<C> {
   limits?: Limits;
   /** Passed to every capability handler for this run. */
   ctx?: C;
+  /** Capability path -> value to return instead of calling the handler. */
+  mocks?: Record<string, unknown>;
 }
 
 export class ObjScriptInterpreter<C = undefined> {
@@ -108,6 +110,11 @@ export class ObjScriptInterpreter<C = undefined> {
         return result as RunResult<T>;
       }
 
+      if (opts.mocks && step.path in opts.mocks) {
+        replay.push({ path: step.path, ok: opts.mocks[step.path] ?? null });
+        continue;
+      }
+      
       const cap = this.capabilities[step.path];
       if (!cap) {
         replay.push({ path: step.path, err: `no handler registered for ${step.path}` });
@@ -163,5 +170,22 @@ export class ObjScriptInterpreter<C = undefined> {
         return { ok: false, errors: [{ path: "", code: "internal", message: msg }] };
       }
     }
+  }
+
+  /** Everything a script author can use. Hand this to agents. */
+  catalog() {
+    return {
+      builtins: JSON.parse(builtins()) as { name: string; signature: string; description: string }[],
+      capabilities: Object.values(this.capabilities).map(({ path, description, params, returns }) => ({
+        path, description, params, returns,
+      })),
+      modules: [...this.modules].map(([key, { source }]) => ({
+        import: source.name ?? key,
+        version: source.version,
+        description: source.description,
+        params: source.params,
+        returns: source.returns,
+      })),
+    };
   }
 }

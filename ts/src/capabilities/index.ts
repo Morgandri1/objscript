@@ -7,4 +7,5 @@ export interface Capability<C = undefined> {
   params: Record<string, ObjType>;
   returns: ObjType;
   handler: (args: Record<string, unknown>, ctx: C) => unknown | Promise<unknown>;
+  description?: string;
 }

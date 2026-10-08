@@ -126,3 +126,12 @@ fn err_json(errors: Vec<J>) -> JsError {
 fn err_one(code: &'static str, msg: impl Into<String>) -> JsError {
     err_json(vec![Diagnostic::new("", code, msg).to_json()])
 }
+
+#[wasm_bindgen]
+pub fn builtins() -> String {
+    let list: Vec<J> = objscript::stdlib::BUILTINS
+        .iter()
+        .map(|(name, sig, desc)| json!({ "name": name, "signature": sig, "description": desc }))
+        .collect();
+    J::Array(list).to_string()
+}
