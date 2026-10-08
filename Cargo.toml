@@ -3,7 +3,7 @@ members = ["wasm"]
 
 [package]
 name = "objscript"
-version = "0.3.3"
+version = "1.0.0"
 edition = "2021"
 
 [features]

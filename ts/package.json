@@ -1,12 +1,13 @@
 {
   "name": "objscript",
-  "version": "0.3.3",
+  "version": "1.0.0",
   "type": "module",
   "module": "src/index.ts",
   "exports": {
     ".": "./src/index.ts",
     "./fs": "./src/fs.ts",
-    "./llms": "./src/agent/index.ts"
+    "./llms": "./src/agent/index.ts",
+    "./schema": "./schema/objscript.schema.json"
   },
   "scripts": {
     "build:wasm": "cd ../wasm && wasm-pack build --target nodejs --out-dir ../ts/pkg",
