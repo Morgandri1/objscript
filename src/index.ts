@@ -7,3 +7,4 @@ export type {
   RuntimeError,
   RunResult
 } from "./types"
+export * from "./schema"
