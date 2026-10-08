@@ -111,7 +111,7 @@ export class ObjScriptInterpreter<C = undefined> {
     if (!source.imports) return source;
     const imports: Record<string, string> = {};
     for (const [alias, spec] of Object.entries(source.imports)) {
-      if (spec.startsWith("host/")) imports[alias] = spec;
+      if (spec.startsWith("std/")) imports[alias] = spec;
       else if (isFilePath(spec)) imports[alias] = resolvePath(baseDir, spec);
       else imports[alias] = this.byName.get(spec) ?? spec;
     }

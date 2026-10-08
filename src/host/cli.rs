@@ -18,11 +18,11 @@ pub struct CliHost;
 impl Host for CliHost {
     fn call(&mut self, path: &str, args: Vec<(String, Value)>) -> Result<Value, String> {
         match path {
-            "host/secret" => {
+            "std/secret" => {
                 let name = args[0].1.render();
                 std::env::var(&name).map(Value::str).map_err(|_| format!("secret {name} is not set"))
             }
-            "host/http/fetch" => {
+            "std/http/fetch" => {
                 let [(_, url), (_, headers), (_, query)]: [(String, Value); 3] =
                     args.try_into().map_err(|_| "fetch: expected url, headers, query".to_string())?;
                 let mut req = ureq::get(&url.render());
@@ -48,12 +48,12 @@ impl Host for CliHost {
     fn caps(&self) -> Vec<Capability> {
         vec![
             Capability::new(
-                "host/secret", 
+                "std/secret", 
                 "Read a named secret from the env.", 
                 parse_sig(&[("name", Type::Str)], Type::Str)
             ),
             Capability::new(
-                "host/http/fetch",
+                "std/http/fetch",
                 "HTTP call",
                 parse_sig(
                     &[("url", Type::Str), ("headers", str_map()), ("query", str_map())],

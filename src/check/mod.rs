@@ -61,7 +61,7 @@ fn check_module(m: &mut Module, sigs: &HashMap<String, FnType>, host: &dyn Host)
 
     for (alias, path) in &m.imports {
         let at = join("/imports", alias);
-        let sig = if path.starts_with("host/") {
+        let sig = if path.starts_with("std/") {
             host.caps().iter()
                 .find(|c| c.path == path)
                 .map(|c| c.signature.clone())
@@ -69,7 +69,7 @@ fn check_module(m: &mut Module, sigs: &HashMap<String, FnType>, host: &dyn Host)
                     Diagnostic::new(
                         &at, "capability_not_granted", 
                         format!("host capability \"{path}\" is not available")
-                    ).hint("check the catalog for granted host/* capabilities")
+                    ).hint("check the catalog for granted std/* capabilities")
                 })
         } else if path.starts_with('@') || is_file_path(path) {
             sigs.get(path).cloned()
@@ -83,7 +83,7 @@ fn check_module(m: &mut Module, sigs: &HashMap<String, FnType>, host: &dyn Host)
             Err(Diagnostic::new(
                 &at, "invalid_import", 
                 format!("\"{path}\" is not a valid import")
-            ).hint("imports are host/*, @org/pkg/name, or a path to a .json file; std functions need no import"))
+            ).hint("imports are std/*, @org/pkg/name, or a path to a .json file; std functions need no import"))
         };
         match sig {
             Ok(sig) => {

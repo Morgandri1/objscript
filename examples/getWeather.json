@@ -2,7 +2,7 @@
   "objscript": "0.2",
   "name": "@morgan/tools/getWeather",
   "description": "Current weather for a US zip code (OpenWeatherMap).",
-  "imports": { "fetch": "host/http/fetch" },
+  "imports": { "fetch": "std/http/fetch" },
   "params": { "zipCode": "string", "apiKey": "string" },
   "returns": { "rec": { "summary": "string", "tempF": "float" } },
   "body": [

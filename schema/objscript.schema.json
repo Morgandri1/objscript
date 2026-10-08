@@ -19,11 +19,11 @@
     "command": { "$ref": "#/$defs/command" },
     "imports": {
       "type": "object",
-      "description": "Local alias -> import path. host/* are capabilities granted by the host; @org/* are library modules pinned to a version. std functions are always in scope and need no import.",
+      "description": "Local alias -> import path. std/* are capabilities granted by the host; @org/* are library modules pinned to a version. std functions are always in scope and need no import.",
       "propertyNames": { "$ref": "#/$defs/ident" },
       "additionalProperties": {
         "type": "string",
-        "pattern": "^(host/[a-z0-9_]+(/[a-z0-9_]+)*|@[a-z0-9-]+(/[A-Za-z0-9_-]+)+(@[0-9]+)?|(/|\\./|\\.\\./).+\\.json)$"
+        "pattern": "^(std/[a-z0-9_]+(/[a-z0-9_]+)*|@[a-z0-9-]+(/[A-Za-z0-9_-]+)+(@[0-9]+)?|(/|\\./|\\.\\./).+\\.json)$"
       }
     },
     "params": {
@@ -201,7 +201,7 @@
         "expect": { "description": "Expected return value." },
         "expectCalls": {
           "type": "array",
-          "description": "Expected host/module calls in order, each { alias: namedArgs }.",
+          "description": "Expected std/module calls in order, each { alias: namedArgs }.",
           "items": { "type": "object", "minProperties": 1, "maxProperties": 1 }
         }
       }

@@ -17,7 +17,7 @@ pub struct Compiled(Program);
 
 /// Parse + check a script. Throws an Error whose message is `{"ok":false,"errors":[...]}`.
 /// `deps`: `{ "@org/pkg/name@1": <module json>, ... }`
-/// `capabilities`: `{ "host/x": { "params": {...}, "returns": T }, ... }`
+/// `capabilities`: `{ "std/x": { "params": {...}, "returns": T }, ... }`
 #[wasm_bindgen]
 pub fn compile(script: &str, deps: &str) -> Result<Compiled, JsError> {
     let entry = parse_module(&parse_json(script, "script")?).map_err(|d| err_json(vec![d.to_json()]))?;

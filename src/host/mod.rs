@@ -6,7 +6,7 @@ use crate::types::value::Value;
 #[cfg(feature = "cli")]
 pub mod cli;
 
-/// Capabilities granted by the embedding application (the `host/*` imports).
+/// Capabilities granted by the embedding application (the `std/*` imports).
 /// A script can only touch the outside world through this trait.
 pub trait Host {    
     /// Perform a host call. `args` are named and in signature order.

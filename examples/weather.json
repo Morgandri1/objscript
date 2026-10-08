@@ -5,8 +5,8 @@
   "command": { "name": "weather", "description": "Current weather by zip code" },
   "imports": {
     "getWeather": "@morgan/tools/getWeather@1",
-    "secret": "host/secret",
-    "reply": "host/discord/reply"
+    "secret": "std/secret",
+    "reply": "std/discord/reply"
   },
   "params": {
     "zipCode": { "type": "string", "description": "5-digit US zip code" }

@@ -1,6 +1,6 @@
 {
   "objscript": "0.2",
-  "imports": { "fetch": "host/http/fetch" },
+  "imports": { "fetch": "std/http/fetch" },
   "params": { "url": "string" },
   "returns": "json",
   "body": [

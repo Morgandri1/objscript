@@ -32,7 +32,7 @@ WEATHER_API_KEY=abc cargo run -- run examples/weather.json \
   --dep @morgan/tools/getWeather@1=examples/getWeather.json --args '{"zipCode": "10001"}'
 ```
 
-`host/http/fetch` is stubbed in the CLI (returns canned weather) to keep the
+`std/http/fetch` is stubbed in the CLI (returns canned weather) to keep the
 crate dependency-free apart from `serde_json`.
 
 ## Semantics worth knowing

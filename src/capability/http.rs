@@ -3,7 +3,7 @@ use crate::types::{FnType, Type, str_map};
 
 pub fn http_fetch() -> Capability {
     Capability {
-        path: "host/http/fetch",
+        path: "std/http/fetch",
         description: "HTTP fetch. Returns the status and the body (parsed as JSON when possible, otherwise a string).",
         signature: FnType {
             params: vec![("url".into(), Type::Str), ("headers".into(), str_map()), ("query".into(), str_map())],
