@@ -1,7 +1,6 @@
 use serde_json::{json, Value as J};
 
 use crate::capability::Capability;
-use crate::types::{FnType, Type};
 use crate::types::value::Value;
 
 #[cfg(feature = "cli")]

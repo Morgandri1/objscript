@@ -18,5 +18,5 @@
       "objscript-wasm": ["../pkg/objscript_wasm"]
     }
   },
-  "include": ["src", "test", "test"]
+  "include": ["src", "test", "../scripts"]
 }

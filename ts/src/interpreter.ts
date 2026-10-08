@@ -20,8 +20,12 @@ export class ObjScriptInterpreter<C = undefined> {
   private limits: Limits;
   private cache = new Map<string, Compiled>();
 
-  constructor(opts: { capabilities?: Record<string, Capability<C>>; limits?: Limits } = {}) {
-    this.capabilities = opts.capabilities ?? {};
+  constructor(opts: { capabilities?: Capability<C>[]; limits?: Limits } = {}) {
+    this.capabilities = {};
+    for (const cap of opts.capabilities ?? []) {
+      if (this.capabilities[cap.path]) throw new Error(`capability ${cap.path} registered twice`);
+      this.capabilities[cap.path] = cap;
+    }
     this.limits = opts.limits ?? {};
   }
 

@@ -10,9 +10,6 @@ use crate::{Diagnostic, Host, Program, check_program};
 use crate::parse::parse_module;
 use crate::types::value::Value;
 
-#[cfg(feature = "cli")]
-use crate::host::cli::CliHost;
-
 /// `{"rec": {...}}` of strings -> pairs; `null` (omitted) -> nothing.
 pub fn string_pairs(v: &Value) -> Vec<(String, String)> {
     match v {
