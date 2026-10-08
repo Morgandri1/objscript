@@ -1,0 +1,210 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:objscript:0.2:module",
+  "title": "ObjScript module",
+  "description": "A sandboxed, statically checked script whose source format is JSON. Library modules have a `name`; entry scripts (e.g. Discord commands) omit it.",
+  "type": "object",
+  "required": ["objscript", "returns", "body"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "objscript": { "const": "0.2", "description": "Language version." },
+    "name": {
+      "type": "string",
+      "description": "Library path, e.g. @morgan/tools/getWeather. Omit for entry scripts.",
+      "pattern": "^@[a-z0-9-]+(/[A-Za-z0-9_-]+)+$"
+    },
+    "version": { "type": "integer", "minimum": 1, "description": "Optional. Lets importers pin @org/pkg/name@N." },
+    "description": { "type": "string", "description": "What this script does. Shown to agents and users." },
+    "command": { "$ref": "#/$defs/command" },
+    "imports": {
+      "type": "object",
+      "description": "Local alias -> import path. host/* are capabilities granted by the host; @org/* are library modules pinned to a version. std functions are always in scope and need no import.",
+      "propertyNames": { "$ref": "#/$defs/ident" },
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^(host/[a-z0-9_]+(/[a-z0-9_]+)*|@[a-z0-9-]+(/[A-Za-z0-9_-]+)+(@[0-9]+)?|(/|\\./|\\.\\./).+\\.json)$"
+      }
+    },
+    "params": {
+      "type": "object",
+      "description": "Named inputs, checked when the script is called. Key order is the positional order.",
+      "propertyNames": { "$ref": "#/$defs/ident" },
+      "additionalProperties": { "$ref": "#/$defs/param" }
+    },
+    "returns": { "$ref": "#/$defs/type" },
+    "body": { "$ref": "#/$defs/block" },
+    "tests": { "type": "array", "items": { "$ref": "#/$defs/test" } }
+  },
+
+  "$defs": {
+    "ident": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
+
+    "command": {
+      "type": "object",
+      "description": "Registers this script as a Discord slash command. Options are derived from `params`.",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "pattern": "^[-_a-z0-9]{1,32}$" },
+        "description": { "type": "string", "maxLength": 100 }
+      }
+    },
+
+    "param": {
+      "oneOf": [
+        { "$ref": "#/$defs/type" },
+        {
+          "type": "object",
+          "required": ["type"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "$ref": "#/$defs/type" },
+            "description": { "type": "string" }
+          }
+        }
+      ]
+    },
+
+    "type": {
+      "description": "A type. Primitives are strings; compound types are single-key objects.",
+      "oneOf": [
+        { "enum": ["null", "bool", "int", "float", "string", "bytes", "json"] },
+        { "type": "object", "required": ["list"], "additionalProperties": false, "properties": { "list": { "$ref": "#/$defs/type" } } },
+        { "type": "object", "required": ["map"], "additionalProperties": false, "properties": { "map": { "$ref": "#/$defs/type" } } },
+        { "type": "object", "required": ["option"], "additionalProperties": false, "properties": { "option": { "$ref": "#/$defs/type" } } },
+        {
+          "type": "object", "required": ["rec"], "additionalProperties": false,
+          "properties": { "rec": { "type": "object", "additionalProperties": { "$ref": "#/$defs/type" } } }
+        },
+        {
+          "type": "object", "required": ["fn"], "additionalProperties": false,
+          "properties": {
+            "fn": {
+              "type": "object", "required": ["params", "returns"], "additionalProperties": false,
+              "properties": {
+                "params": { "type": "object", "propertyNames": { "$ref": "#/$defs/ident" }, "additionalProperties": { "$ref": "#/$defs/type" } },
+                "returns": { "$ref": "#/$defs/type" }
+              }
+            }
+          }
+        }
+      ]
+    },
+
+    "block": { "type": "array", "items": { "$ref": "#/$defs/stmt" } },
+
+    "stmt": {
+      "oneOf": [
+        {
+          "description": "Bind a name. Immutable unless mut is true.",
+          "type": "object", "required": ["let", "value"], "additionalProperties": false,
+          "properties": {
+            "let": { "$ref": "#/$defs/ident" },
+            "mut": { "type": "boolean" },
+            "type": { "$ref": "#/$defs/type" },
+            "value": { "$ref": "#/$defs/expr" }
+          }
+        },
+        {
+          "description": "Reassign a mut binding.",
+          "type": "object", "required": ["set", "value"], "additionalProperties": false,
+          "properties": { "set": { "$ref": "#/$defs/ident" }, "value": { "$ref": "#/$defs/expr" } }
+        },
+        {
+          "type": "object", "required": ["if", "then"], "additionalProperties": false,
+          "properties": { "if": { "$ref": "#/$defs/expr" }, "then": { "$ref": "#/$defs/block" }, "else": { "$ref": "#/$defs/block" } }
+        },
+        {
+          "type": "object", "required": ["while", "do"], "additionalProperties": false,
+          "properties": { "while": { "$ref": "#/$defs/expr" }, "do": { "$ref": "#/$defs/block" } }
+        },
+        {
+          "type": "object", "required": ["return"], "additionalProperties": false,
+          "properties": { "return": { "$ref": "#/$defs/expr" } }
+        },
+        {
+          "description": "Evaluate an expression for its side effects.",
+          "type": "object", "required": ["do"], "additionalProperties": false,
+          "properties": { "do": { "$ref": "#/$defs/expr" } }
+        }
+      ]
+    },
+
+    "expr": {
+      "description": "JSON primitives are literals, arrays are list literals, objects are single-key nodes.",
+      "oneOf": [
+        { "type": ["string", "number", "boolean", "null"] },
+        { "type": "array", "items": { "$ref": "#/$defs/expr" } },
+        {
+          "type": "object", "required": ["ref"], "additionalProperties": false,
+          "properties": { "ref": { "$ref": "#/$defs/ident" } }
+        },
+        {
+          "description": "Call a std function, an import, or a fn-typed variable. Named args for scripts/modules/lambdas; positional for std.",
+          "type": "object", "required": ["call"], "additionalProperties": false,
+          "properties": {
+            "call": { "$ref": "#/$defs/ident" },
+            "args": {
+              "oneOf": [
+                { "type": "array", "items": { "$ref": "#/$defs/expr" } },
+                { "type": "object", "propertyNames": { "$ref": "#/$defs/ident" }, "additionalProperties": { "$ref": "#/$defs/expr" } }
+              ]
+            }
+          }
+        },
+        {
+          "type": "object", "required": ["rec"], "additionalProperties": false,
+          "properties": { "rec": { "type": "object", "additionalProperties": { "$ref": "#/$defs/expr" } } }
+        },
+        {
+          "type": "object", "required": ["get", "at"], "additionalProperties": false,
+          "properties": { "get": { "$ref": "#/$defs/expr" }, "at": { "type": ["string", "integer"] } }
+        },
+        {
+          "type": "object", "required": ["and"], "additionalProperties": false,
+          "properties": { "and": { "type": "array", "minItems": 2, "items": { "$ref": "#/$defs/expr" } } }
+        },
+        {
+          "type": "object", "required": ["or"], "additionalProperties": false,
+          "properties": { "or": { "type": "array", "minItems": 2, "items": { "$ref": "#/$defs/expr" } } }
+        },
+        {
+          "type": "object", "required": ["fn"], "additionalProperties": false,
+          "properties": {
+            "fn": {
+              "type": "object", "required": ["params", "returns", "body"], "additionalProperties": false,
+              "properties": {
+                "params": { "type": "object", "propertyNames": { "$ref": "#/$defs/ident" }, "additionalProperties": { "$ref": "#/$defs/type" } },
+                "returns": { "$ref": "#/$defs/type" },
+                "body": { "$ref": "#/$defs/block" }
+              }
+            }
+          }
+        },
+        {
+          "description": "Convert untyped json into a typed value; fails at runtime if the shape doesn't match.",
+          "type": "object", "required": ["decode", "as"], "additionalProperties": false,
+          "properties": { "decode": { "$ref": "#/$defs/expr" }, "as": { "$ref": "#/$defs/type" } }
+        }
+      ]
+    },
+
+    "test": {
+      "type": "object",
+      "required": ["args"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "args": { "type": "object" },
+        "mocks": { "type": "object", "description": "Import alias -> value returned whenever it is called." },
+        "expect": { "description": "Expected return value." },
+        "expectCalls": {
+          "type": "array",
+          "description": "Expected host/module calls in order, each { alias: namedArgs }.",
+          "items": { "type": "object", "minProperties": 1, "maxProperties": 1 }
+        }
+      }
+    }
+  }
+}
