@@ -56,7 +56,7 @@ exports.Compiled = Compiled;
 /**
  * Parse + check a script. Throws an Error whose message is `{"ok":false,"errors":[...]}`.
  * `deps`: `{ "@org/pkg/name@1": <module json>, ... }`
- * `capabilities`: `{ "host/x": { "params": {...}, "returns": T }, ... }`
+ * `capabilities`: `{ "std/x": { "params": {...}, "returns": T }, ... }`
  * @param {string} script
  * @param {string} deps
  * @returns {Compiled}

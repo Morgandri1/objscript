@@ -15,6 +15,6 @@ export class Compiled {
 /**
  * Parse + check a script. Throws an Error whose message is `{"ok":false,"errors":[...]}`.
  * `deps`: `{ "@org/pkg/name@1": <module json>, ... }`
- * `capabilities`: `{ "host/x": { "params": {...}, "returns": T }, ... }`
+ * `capabilities`: `{ "std/x": { "params": {...}, "returns": T }, ... }`
  */
 export function compile(script: string, deps: string): Compiled;

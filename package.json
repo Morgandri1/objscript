@@ -1,13 +1,19 @@
 {
   "name": "objscript",
-  "version": "0.1.0",
+  "version": "0.2.3",
   "type": "module",
   "module": "src/index.ts",
-  "exports": { ".": "./src/index.ts" },
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
     "build:wasm": "cd ../wasm && wasm-pack build --target nodejs --out-dir ../ts/pkg",
     "typecheck": "tsc --noEmit",
-    "test": "bun test"
+    "test": "bun test",
+    "bump:minor": "bun ../scripts/bump.ts minor --tag",
+    "bump:major": "bun ../scripts/bump.ts major --tag",
+    "bump:patch": "bun ../scripts/bump.ts patch --tag",
+    "bump": "bun ../scripts/bump.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",

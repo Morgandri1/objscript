@@ -20,8 +20,12 @@ export class ObjScriptInterpreter<C = undefined> {
   private limits: Limits;
   private cache = new Map<string, Compiled>();
 
-  constructor(opts: { capabilities?: Record<string, Capability<C>>; limits?: Limits } = {}) {
-    this.capabilities = opts.capabilities ?? {};
+  constructor(opts: { capabilities?: Capability<C>[]; limits?: Limits } = {}) {
+    this.capabilities = {};
+    for (const cap of opts.capabilities ?? []) {
+      if (this.capabilities[cap.path]) throw new Error(`capability ${cap.path} registered twice`);
+      this.capabilities[cap.path] = cap;
+    }
     this.limits = opts.limits ?? {};
   }
 
@@ -107,7 +111,7 @@ export class ObjScriptInterpreter<C = undefined> {
     if (!source.imports) return source;
     const imports: Record<string, string> = {};
     for (const [alias, spec] of Object.entries(source.imports)) {
-      if (spec.startsWith("host/")) imports[alias] = spec;
+      if (spec.startsWith("std/")) imports[alias] = spec;
       else if (isFilePath(spec)) imports[alias] = resolvePath(baseDir, spec);
       else imports[alias] = this.byName.get(spec) ?? spec;
     }

@@ -1,7 +1,7 @@
-import {type Capability } from ".";
+import {type Capability } from "..";
 
-/** Ready-made `host/http/fetch`. */
 export const httpFetch: Capability<any> = {
+  path: "std/http/fetch",
   params: {
     url: "string",
     headers: { option: { map: "string" } },
