@@ -41,8 +41,7 @@ jobs:
           # wasm-pack writes a .gitignore of "*" into pkg/, which would stop it being committed
           rm -f ts/pkg/.gitignore ts/pkg/package.json ts/pkg/README.md
           mkdir dist
-          cp -R ts/src ts/pkg ts/package.json dist/
-          cp -R schema dist/
+          cp -R ts/src ts/pkg ts/schema ts/package.json dist/
 
       - name: Publish to dist branch
         uses: peaceiris/actions-gh-pages@v4
