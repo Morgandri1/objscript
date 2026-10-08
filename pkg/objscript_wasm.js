@@ -54,6 +54,23 @@ if (Symbol.dispose) Compiled.prototype[Symbol.dispose] = Compiled.prototype.free
 exports.Compiled = Compiled;
 
 /**
+ * @returns {string}
+ */
+function builtins() {
+    let deferred1_0;
+    let deferred1_1;
+    try {
+        const ret = wasm.builtins();
+        deferred1_0 = ret[0];
+        deferred1_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+    }
+}
+exports.builtins = builtins;
+
+/**
  * Parse + check a script. Throws an Error whose message is `{"ok":false,"errors":[...]}`.
  * `deps`: `{ "@org/pkg/name@1": <module json>, ... }`
  * `capabilities`: `{ "std/x": { "params": {...}, "returns": T }, ... }`
