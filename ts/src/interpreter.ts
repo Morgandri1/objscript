@@ -152,12 +152,29 @@ export class ObjScriptInterpreter<C = undefined> {
     return { ...source, imports };
   }
 
+  /** The modules `root` needs, directly or through other modules. `root` must already be resolved. */
+  private depsFor(root: Source): Record<string, Source> {
+    const out: Record<string, Source> = {};
+    const pending = Object.values(root.imports ?? {});
+    while (pending.length) {
+      const key = pending.pop()!;
+      if (key.startsWith("host/") || key in out) continue;
+      const m = this.modules.get(key);
+      if (!m) continue; // left for the checker to report as unknown_module
+      const resolved = this.resolve(m.source, m.baseDir);
+      out[key] = resolved;
+      pending.push(...Object.values(resolved.imports ?? {}));
+    }
+    return out;
+  }
+
   private compile(script: Source, baseDir?: string): Compiled | CheckFailure {
-    const key = JSON.stringify(this.resolve(script, baseDir));
+    const resolved = this.resolve(script, baseDir);
+    const key = JSON.stringify(resolved);
     const hit = this.cache.get(key);
     if (hit) return hit;
 
-    const deps = Object.fromEntries([...this.modules].map(([k, m]) => [k, this.resolve(m.source, m.baseDir)]));
+    const deps = this.depsFor(resolved);
     try {
       const c = compile(key, JSON.stringify(deps));
       this.cache.set(key, c);
