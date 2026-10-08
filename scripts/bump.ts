@@ -73,8 +73,8 @@ await $`cargo update --workspace`.cwd(root).quiet();
 console.log("  Cargo.lock");
 
 if (tag) {
-  await $`git add ${files.cargoRoot} ${files.cargoWasm} ${files.packageJson} Cargo.lock`.cwd(root);
+  await $`git add .`.cwd(root);
   await $`git commit -m ${`release: v${next}`}`.cwd(root);
   await $`git tag ${`v${next}`}`.cwd(root);
-  console.log(`\nTagged v${next}. Push with: git push --follow-tags`);
+  console.log(`\nTagged v${next}. Push with: git push origin v${next}`);
 }
