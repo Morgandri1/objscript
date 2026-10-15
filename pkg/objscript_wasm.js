@@ -73,17 +73,21 @@ exports.builtins = builtins;
 /**
  * Parse + check a script. Throws an Error whose message is `{"ok":false,"errors":[...]}`.
  * `deps`: `{ "@org/pkg/name@1": <module json>, ... }`
- * `capabilities`: `{ "std/x": { "params": {...}, "returns": T }, ... }`
+ * `capabilities`: `{ "org/area/name": { "params": {...}, "returns": T, "description"?: "..." }, ... }`.
+ * These are the only capabilities the script may import; param order is call order.
  * @param {string} script
  * @param {string} deps
+ * @param {string} capabilities
  * @returns {Compiled}
  */
-function compile(script, deps) {
+function compile(script, deps, capabilities) {
     const ptr0 = passStringToWasm0(script, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
     const ptr1 = passStringToWasm0(deps, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len1 = WASM_VECTOR_LEN;
-    const ret = wasm.compile(ptr0, len0, ptr1, len1);
+    const ptr2 = passStringToWasm0(capabilities, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len2 = WASM_VECTOR_LEN;
+    const ret = wasm.compile(ptr0, len0, ptr1, len1, ptr2, len2);
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }

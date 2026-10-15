@@ -38,7 +38,7 @@ export function objscriptTools<C>(interp: ObjScriptInterpreter<C>, store: Script
     tool({
       name: "objscript_run",
       description:
-        'Run a script once with inputs. `mocks` fakes capabilities by path, e.g. {"host/http/fetch": {"status": 200, "body": {...}}}. Unmocked capabilities make real calls.',
+        'Run a script once with inputs. `mocks` fakes capabilities by path, e.g. {"std/http/fetch": {"status": 200, "body": {...}}}. Unmocked capabilities make real calls.',
       input: z.object({
         script: ScriptSchema,
         inputs: z.record(z.string(), z.unknown()).default({}),

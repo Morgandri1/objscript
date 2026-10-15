@@ -3,7 +3,7 @@
 export const memory: WebAssembly.Memory;
 export const __wbg_compiled_free: (a: number, b: number) => void;
 export const builtins: () => [number, number];
-export const compile: (a: number, b: number, c: number, d: number) => [number, number, number];
+export const compile: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number];
 export const compiled_step: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number, number, number];
 export const __wbindgen_externrefs: WebAssembly.Table;
 export const __wbindgen_free: (a: number, b: number, c: number) => void;

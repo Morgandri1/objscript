@@ -17,6 +17,7 @@ export function builtins(): string;
 /**
  * Parse + check a script. Throws an Error whose message is `{"ok":false,"errors":[...]}`.
  * `deps`: `{ "@org/pkg/name@1": <module json>, ... }`
- * `capabilities`: `{ "std/x": { "params": {...}, "returns": T }, ... }`
+ * `capabilities`: `{ "org/area/name": { "params": {...}, "returns": T, "description"?: "..." }, ... }`.
+ * These are the only capabilities the script may import; param order is call order.
  */
-export function compile(script: string, deps: string): Compiled;
+export function compile(script: string, deps: string, capabilities: string): Compiled;
