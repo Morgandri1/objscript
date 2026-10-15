@@ -19,7 +19,7 @@ ObjScript is built for one job: letting **AI agents write scripts** that get sto
 {
   "objscript": "0.2",
   "description": "GET a URL and return the response body.",
-  "imports": { "fetch": "host/http/fetch" },
+  "imports": { "fetch": "std/http/fetch" },
   "params": { "url": "string" },
   "returns": "json",
   "body": [
@@ -104,20 +104,20 @@ type RunResult<T> =
 
 ### Capabilities
 
-A capability is a host function a script can import (`host/...`). Each one declares its contract and a handler:
+A capability is a host function a script can import by its path (`org/area/name`). Each one declares its contract and a handler:
 
 ```ts
 import type { Capability } from "objscript";
 
 export const greet: Capability = {
-  path: "host/demo/greet",
+  path: "acme/demo/greet",
   params: { name: "string" },
   returns: "string",
   handler: async ({ name }) => `hi ${name}`,
 };
 ```
 
-A capability needs to exist on **both** sides: its signature in the Rust core (which decides what scripts may import) and a handler in TS (which performs the call). If only one side has it, scripts fail with `capability_not_granted` at check time or `no handler registered` at runtime.
+The capabilities you pass to the interpreter are the grant list: their `params`/`returns` are handed to the checker, so a script can import exactly those paths and nothing else (`capability_not_granted` otherwise). Values a handler returns are re-validated against `returns` before the script sees them.
 
 The `ctx` option on `run`/`runFile` is passed to every handler, so per-run state (like the current Discord interaction) can reach them.
 
@@ -133,7 +133,7 @@ A script (or library module) is one JSON object:
   "name": "@org/pkg/thing",            // library modules only
   "version": 1,                        // optional, enables @org/pkg/thing@1 imports
   "description": "...",
-  "imports": { "alias": "host/http/fetch" | "@org/pkg/name" | "./file.json" },
+  "imports": { "alias": "std/http/fetch" | "@org/pkg/name" | "./file.json" },
   "params": { "name": "string" | { "type": T, "description": "..." } },
   "returns": T,
   "body": [ /* statements */ ],

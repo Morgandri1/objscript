@@ -6,7 +6,7 @@
 //!
 //! The only way to get a [`Program`] is through [`check_program`].
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use crate::types::ast::*;
@@ -57,39 +57,38 @@ fn is_file_path(p: &str) -> bool {
 }
 
 fn check_module(m: &mut Module, sigs: &HashMap<String, FnType>, host: &dyn Host) -> Vec<Diagnostic> {
-    let mut c = Checker { imports: HashMap::new(), scopes: Vec::new(), returns: Vec::new(), errors: Vec::new() };
+    let mut c = Checker { imports: HashMap::new(), broken: HashSet::new(), scopes: Vec::new(), returns: Vec::new(), errors: Vec::new() };
 
     for (alias, path) in &m.imports {
         let at = join("/imports", alias);
-        let sig = if path.starts_with("std/") {
-            host.caps().iter()
-                .find(|c| c.path == path)
-                .map(|c| c.signature.clone())
+        // Modules are `@org/...` or file paths; anything else must be a capability the host grants.
+        let sig = if path.starts_with('@') || is_file_path(path) {
+            sigs.get(path).cloned()
                 .ok_or_else(|| {
                     Diagnostic::new(
-                        &at, "capability_not_granted", 
-                        format!("host capability \"{path}\" is not available")
-                    ).hint("check the catalog for granted std/* capabilities")
-                })
-        } else if path.starts_with('@') || is_file_path(path) {
-            sigs.get(path).cloned()
-                .ok_or_else(|| { 
-                    Diagnostic::new(
-                        &at, "unknown_module", 
+                        &at, "unknown_module",
                         format!("module \"{path}\" is not loaded")
                     ).hint("load the module's file into the interpreter, then import it by name or path")
                 })
         } else {
-            Err(Diagnostic::new(
-                &at, "invalid_import", 
-                format!("\"{path}\" is not a valid import")
-            ).hint("imports are std/*, @org/pkg/name, or a path to a .json file; std functions need no import"))
+            host.caps().iter()
+                .find(|c| c.path == *path)
+                .map(|c| c.signature.clone())
+                .ok_or_else(|| {
+                    Diagnostic::new(
+                        &at, "capability_not_granted",
+                        format!("host capability \"{path}\" is not available")
+                    ).hint("imports are granted host capabilities (see the catalog), @org/pkg/name modules, or paths to .json files; built-ins need no import")
+                })
         };
         match sig {
             Ok(sig) => {
                 c.imports.insert(alias.clone(), sig);
             }
-            Err(d) => c.errors.push(d),
+            Err(d) => {
+                c.broken.insert(alias.clone());
+                c.errors.push(d)
+            }
         }
     }
 
@@ -108,6 +107,8 @@ fn check_module(m: &mut Module, sigs: &HashMap<String, FnType>, host: &dyn Host)
 struct Checker {
     /// alias -> signature, for both host capabilities and modules.
     imports: HashMap<String, FnType>,
+    /// Aliases whose import already failed; calls to them aren't reported again.
+    broken: HashSet<String>,
     scopes: Vec<HashMap<String, Binding>>,
     returns: Vec<Type>,
     errors: Vec<Diagnostic>,
@@ -395,9 +396,11 @@ impl Checker {
                 }
             };
         }
-        let builtins: Vec<&str> = stdlib::BUILTINS.iter().map(|(n, _, _)| *n).collect();
-        self.report(Diagnostic::new(join(at, "call"), "unknown_function", format!("\"{callee}\" is not a function in scope"))
-            .hint(format!("import it, or use a built-in: {}", builtins.join(", "))));
+        if !self.broken.contains(callee) {
+            let builtins: Vec<&str> = stdlib::BUILTINS.iter().map(|(n, _, _)| *n).collect();
+            self.report(Diagnostic::new(join(at, "call"), "unknown_function", format!("\"{callee}\" is not a function in scope"))
+                .hint(format!("import it, or use a built-in: {}", builtins.join(", "))));
+        }
         // Still check the arguments so nested errors surface in the same round.
         match args {
             Args::Positional(xs) => xs.iter_mut().for_each(|x| {

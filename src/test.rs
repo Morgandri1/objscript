@@ -56,7 +56,7 @@ impl Host for TestHost<'_> {
         match self.mocks.get(&alias) {
             Some(v) => Some(Ok(Value::from_json(v))),
             // host calls expectedly returning null succeed
-            None if path.starts_with("std/") => Some(match CliHost.caps()
+            None if !path.starts_with('@') => Some(match CliHost.caps()
                 .iter().find(|c| c.path == path)
                 .map(|c| c.signature.clone()) 
             {

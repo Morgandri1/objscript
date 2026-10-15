@@ -4,7 +4,7 @@ import type { ObjType } from "./types";
 const IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const MODULE_NAME = /^@[a-z0-9-]+(\/[A-Za-z0-9_-]+)+$/;
 const IMPORT =
-  /^(host\/[a-z0-9_]+(\/[a-z0-9_]+)*|@[a-z0-9-]+(\/[A-Za-z0-9_-]+)+(@[0-9]+)?|(\/|\.\/|\.\.\/).+\.json)$/;
+  /^([a-z0-9_]+(\/[A-Za-z0-9_]+)+|@[a-z0-9-]+(\/[A-Za-z0-9_-]+)+(@[0-9]+)?|(\/|\.\/|\.\.\/).+\.json)$/;
 
 export const Ident = z.string().regex(IDENT, "letters, digits and _, not starting with a digit");
 
@@ -95,7 +95,7 @@ export const ScriptSchema = z.strictObject({
     description: z.string().max(100).optional(),
   }).optional().describe("Makes this script a Discord slash command. Options come from params."),
   imports: z.record(Ident, z.string().regex(IMPORT)).optional()
-    .describe("alias -> host/... capability, @org/pkg/name module, or path. Built-ins need no import."),
+    .describe("alias -> granted capability path (see the catalog), @org/pkg/name module, or path. Built-ins need no import."),
   params: z.record(Ident, ParamSchema).optional().describe("Named inputs. Key order is positional order."),
   returns: ObjTypeSchema,
   body: z.array(StmtSchema),
