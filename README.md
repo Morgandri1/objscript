@@ -123,7 +123,7 @@ The `ctx` option on `run`/`runFile` is passed to every handler, so per-run state
 
 ---
 
-## The language
+## The Language
 
 A script (or library module) is one JSON object:
 
