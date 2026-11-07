@@ -123,7 +123,7 @@ The `ctx` option on `run`/`runFile` is passed to every handler, so per-run state
 
 ---
 
-## The language
+## The Language
 
 A script (or library module) is one JSON object:
 
@@ -149,6 +149,7 @@ A script (or library module) is one JSON object:
 |---|---|
 | `{"let": "x", "value": E}` | Bind a name. Optional `"type": T`, `"mut": true` |
 | `{"set": "x", "value": E}` | Reassign a `mut` binding |
+| `{"store": "xs", "at": E, "value": E}` | Write into a `mut` list (int index), map (string key) or bytes (int index, byte value) in place, without copying when the value isn't shared |
 | `{"if": E, "then": [...], "else": [...]}` | Conditional (`else` optional) |
 | `{"while": E, "do": [...]}` | Loop |
 | `{"return": E}` | Return from the function or script |
@@ -162,7 +163,7 @@ A script (or library module) is one JSON object:
 | `{"ref": "x"}` | Variable |
 | `{"call": "f", "args": {...} \| [...]}` | Call: named args for imports/modules/lambdas, positional for built-ins |
 | `{"rec": {"k": E}}` | Record |
-| `{"get": E, "at": "field" \| 0}` | Field or index (negative indexes count from the end) |
+| `{"get": E, "at": "field" \| 0 \| E}` | Field or index (negative indexes count from the end). `at` may be an expression: an int for list/bytes, a string for maps |
 | `{"and": [...]}`, `{"or": [...]}` | Short-circuit logic |
 | `{"fn": {"params": {...}, "returns": T, "body": [...]}}` | Closure (captures by value) |
 | `{"decode": E, "as": T}` | Turn untyped `json` into `T`, checked at runtime |
@@ -179,7 +180,16 @@ A script (or library module) is one JSON object:
 
 ### Built-ins
 
-Always in scope, positional args: `add sub mul div mod eq neq lt lte gt gte not concat to_string len push unwrap_or`. Run `objscript catalog` for signatures.
+Always in scope, positional args. Run `objscript catalog` for signatures and descriptions.
+
+- core: `add sub mul div mod eq neq lt lte gt gte not concat to_string len push unwrap_or`
+- math: `min max abs exp log sqrt pow tanh sin cos floor ceil round to_float to_int pi inf nan is_nan band bor bxor shl shr`
+- bytes: `bytes_new read_{u8,i8,u16,i16,u32,i32,f32,f64} write_{...} concat_bytes bytes_from_list bytes_to_list to_bytes from_utf8 to_hex from_hex to_base64 from_base64`
+- strings: `split join contains starts_with ends_with replace trim upper lower index_of codepoint from_codepoint chars parse_int parse_float`
+- regex: `regex_test regex_find regex_find_all regex_captures regex_replace regex_split` (fancy-regex: Rust regex syntax plus lookaround and backreferences)
+- collections: `keys has range repeat reverse sort concat_lists slice`
+
+Binary data (model weights, say) ships inside a module that returns `bytes` built with `from_base64`, so no file access is needed.
 
 ### Semantics worth knowing
 
@@ -191,7 +201,7 @@ Always in scope, positional args: `add sub mul div mod eq neq lt lte gt gte not 
 
 ### Limits
 
-Every run has a budget. Exceeding any of them stops the run with an error rather than hanging the host.
+Embedded runs (`Limits::default()`, and the TypeScript package) have a budget. Exceeding any of it stops the run with an error rather than hanging the host. Every limit except call depth can be lifted: pass `null` in the TypeScript `limits`, or use `Limits::unlimited()`. The CLI runs trusted scripts, so it starts unlimited; pass `--fuel`, `--max-size`, `--max-host-calls` or `--max-depth` to set them. Call depth always applies because the interpreter recurses on the native stack.
 
 | Limit | Default | Error |
 |---|---|---|
@@ -225,15 +235,17 @@ The JSON Schema in `schema/objscript.schema.json` gives editors autocomplete (ad
 cargo run -- catalog                                   # built-ins + host capabilities, as JSON
 cargo run -- check examples/broken.json                # every type error at once
 cargo run -- run   examples/sum.json --args '{"n": 100}'
+cargo run -- run   examples/sum.json --arg n=100        # typed by the script's params
 cargo run -- run   examples/loop.json                  # stops with out_of_fuel
 cargo run -- run   examples/fetch.json --args '{"url": "https://api.example.com"}'
 ```
 
-Library modules are passed with `--dep IMPORT_PATH=FILE`. All output is JSON.
+Library modules are passed with `--dep IMPORT_PATH=FILE`, or all at once with `--deps DIR` / `-d DIR` (every `*.json` there that declares a `name`). With neither flag, `./modules` is loaded if it exists. All output is JSON.
 
 | Example | Shows |
 |---|---|
 | `sum.json` | loops and mutation (Turing-completeness check) |
+| `gpt2/` | GPT-2 small, tokenizer and all, generated as ObjScript modules (see its README) |
 | `fetch.json` | a real HTTP request |
 | `loop.json` | an infinite loop stopped by the fuel limit |
 | `broken.json` | many errors reported at once |

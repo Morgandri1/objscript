@@ -35,6 +35,8 @@ pub struct Stmt {
 pub enum StmtKind {
     Let { name: String, mutable: bool, ty: Option<Type>, value: Expr },
     Set { name: String, value: Expr },
+    /// In-place write into a `mut` list, map or bytes: `xs[at] = value`.
+    Store { name: String, at: Expr, value: Expr },
     If { cond: Expr, then: Block, els: Block },
     While { cond: Expr, body: Block },
     Return(Expr),
@@ -76,6 +78,8 @@ pub enum Args {
 pub enum Key {
     Field(String),
     Index(i64),
+    /// Computed key: an int for lists and bytes, a string for maps.
+    Dyn(Box<Expr>),
 }
 
 #[derive(Clone, Debug)]

@@ -14,9 +14,35 @@ use objscript::{
     Limits, print, 
     load, compile
 };
+use std::path::Path;
+use objscript::types::Type;
 use serde_json::json;
 
-pub const USAGE: &str = "usage: objscript <catalog|check|run> <script.json> [--dep PATH=FILE]... [--args JSON]";
+pub const USAGE: &str = "usage: objscript <catalog|check|run> <script.json> [--dep PATH=FILE]... [--deps|-d DIR (default ./modules)]... [--args JSON] [--arg NAME=VALUE]... [--fuel N] [--max-size N] [--max-host-calls N] [--max-depth N]\n\
+the CLI runs trusted scripts, so fuel, size and host-call limits are off unless given; call depth is always limited (default 64)";
+
+/// Every `*.json` in `dir` that declares a module `name` becomes importable by
+/// that name (and `name@version` when it has a version).
+fn dir_deps(dir: &str) -> Result<Vec<(String, String)>, String> {
+    let mut files: Vec<_> = std::fs::read_dir(dir)
+        .map_err(|e| format!("{dir}: {e}"))?
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.extension().is_some_and(|x| x == "json"))
+        .collect();
+    files.sort();
+    let mut out = Vec::new();
+    for f in files {
+        let file = f.to_string_lossy().to_string();
+        let json = load(&file)?;
+        if let Some(name) = json.get("name").and_then(|n| n.as_str()) {
+            out.push((name.to_string(), file.clone()));
+            if let Some(v) = json.get("version").and_then(|v| v.as_u64()) {
+                out.push((format!("{name}@{v}"), file));
+            }
+        }
+    }
+    Ok(out)
+}
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -42,7 +68,10 @@ fn real_main(args: &[String]) -> Result<ExitCode, String> {
     let file = args.get(1).ok_or(USAGE)?;
 
     let mut deps = Vec::new();
+    let mut explicit_deps = false;
     let mut run_args = json!({});
+    let mut limits = Limits::unlimited();
+    let mut named_args: Vec<(String, String)> = Vec::new();
     let mut i = 2;
     while i < args.len() {
         let val = args.get(i + 1).ok_or_else(|| format!("{} needs a value", args[i]))?;
@@ -50,11 +79,31 @@ fn real_main(args: &[String]) -> Result<ExitCode, String> {
             "--dep" => {
                 let (p, f) = val.split_once('=').ok_or("--dep needs PATH=FILE")?;
                 deps.push((p.to_string(), f.to_string()));
+                explicit_deps = true;
+            }
+            "--deps" | "-d" => {
+                if !Path::new(val).is_dir() {
+                    return Err(format!("{}: {val} is not a directory", args[i]));
+                }
+                deps.extend(dir_deps(val)?);
+                explicit_deps = true;
+            }
+            "--fuel" => limits.fuel = Some(val.parse().map_err(|_| "--fuel needs a number")?),
+            "--max-size" => limits.max_size = Some(val.parse().map_err(|_| "--max-size needs a number")?),
+            "--max-host-calls" => limits.max_host_calls = Some(val.parse().map_err(|_| "--max-host-calls needs a number")?),
+            "--max-depth" => limits.max_depth = val.parse().map_err(|_| "--max-depth needs a number")?,
+            "--arg" => {
+                let (k, v) = val.split_once('=').ok_or("--arg needs NAME=VALUE")?;
+                named_args.push((k.to_string(), v.to_string()));
             }
             "--args" => run_args = serde_json::from_str(val).map_err(|e| format!("--args: {e}"))?,
             other => return Err(format!("unknown flag {other}")),
         }
         i += 2;
+    }
+    // With no --dep/--deps, modules come from ./modules when it exists.
+    if !explicit_deps && Path::new("modules").is_dir() {
+        deps.extend(dir_deps("modules")?);
     }
 
     let src = load(file)?;
@@ -66,12 +115,24 @@ fn real_main(args: &[String]) -> Result<ExitCode, String> {
         }
     };
 
+    // --arg values are typed by the script's declared params: strings stay strings,
+    // everything else is parsed as JSON (so n_new=8 is an int and flag=true a bool).
+    for (k, v) in named_args {
+        let param = program.entry().params.iter().find(|p| p.name == k)
+            .ok_or_else(|| format!("--arg {k}: the script has no param \"{k}\""))?;
+        let is_str = matches!(&param.ty, Type::Str) || matches!(&param.ty, Type::Option(t) if **t == Type::Str);
+        let value = if is_str { json!(v) } else {
+            serde_json::from_str(&v).map_err(|e| format!("--arg {k}: {v:?} is not valid JSON for type {}: {e}", param.ty))?
+        };
+        run_args[k] = value;
+    }
+
     match cmd {
         "check" => {
             print(&json!({ "ok": true }));
             Ok(ExitCode::SUCCESS)
         }
-        "run" => match run(&program, &mut CliHost, &run_args, Limits::default()) {
+        "run" => match run(&program, &mut CliHost, &run_args, limits) {
             Ok(o) => {
                 print(&json!({ "ok": true, "value": o.value.to_json(), "fuel_used": o.fuel_used, "host_calls": o.host_calls }));
                 Ok(ExitCode::SUCCESS)

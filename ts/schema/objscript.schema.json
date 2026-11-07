@@ -112,6 +112,11 @@
           "properties": { "set": { "$ref": "#/$defs/ident" }, "value": { "$ref": "#/$defs/expr" } }
         },
         {
+          "description": "In-place write into a mut list (int index), map (string key) or bytes (int index, byte value).",
+          "type": "object", "required": ["store", "at", "value"], "additionalProperties": false,
+          "properties": { "store": { "$ref": "#/$defs/ident" }, "at": { "$ref": "#/$defs/expr" }, "value": { "$ref": "#/$defs/expr" } }
+        },
+        {
           "type": "object", "required": ["if", "then"], "additionalProperties": false,
           "properties": { "if": { "$ref": "#/$defs/expr" }, "then": { "$ref": "#/$defs/block" }, "else": { "$ref": "#/$defs/block" } }
         },
@@ -159,7 +164,7 @@
         },
         {
           "type": "object", "required": ["get", "at"], "additionalProperties": false,
-          "properties": { "get": { "$ref": "#/$defs/expr" }, "at": { "type": ["string", "integer"] } }
+          "properties": { "get": { "$ref": "#/$defs/expr" }, "at": { "description": "Field name, integer index, or an expression computing either.", "oneOf": [{ "type": ["string", "integer"] }, { "$ref": "#/$defs/expr" }] } }
         },
         {
           "type": "object", "required": ["and"], "additionalProperties": false,

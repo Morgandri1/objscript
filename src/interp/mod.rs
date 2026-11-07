@@ -39,38 +39,42 @@ pub fn run(program: &Program, host: &mut dyn Host, args: &serde_json::Value, lim
         scope.insert(p.name.clone(), v);
     }
 
-    let mut it = Interp { program, host, fuel: limits.fuel, host_calls: 0, depth: 0, limits };
+    let mut it = Interp { program, host, used: 0, host_calls: 0, depth: 0, limits };
     let value = it.call_module(entry, scope, "")?;
-    Ok(Outcome { value, fuel_used: it.limits.fuel - it.fuel, host_calls: it.host_calls })
+    Ok(Outcome { value, fuel_used: it.used, host_calls: it.host_calls })
 }
 
 struct Interp<'a> {
     program: &'a Program,
     host: &'a mut dyn Host,
     limits: Limits,
-    fuel: u64,
+    /// Fuel spent so far (counted even when unlimited).
+    used: u64,
     host_calls: u32,
     depth: usize,
 }
 
 impl Interp<'_> {
     fn tick(&mut self, at: &str) -> Result<(), RuntimeError> {
-        if self.fuel == 0 {
-            return Err(RuntimeError::new(at, "out_of_fuel", format!("script exceeded its fuel budget of {}", self.limits.fuel)));
+        if let Some(max) = self.limits.fuel {
+            if self.used >= max {
+                return Err(RuntimeError::new(at, "out_of_fuel", format!("script exceeded its fuel budget of {max}")));
+            }
         }
-        self.fuel -= 1;
+        self.used += 1;
         Ok(())
     }
 
     fn check_size(&self, v: &Value, at: &str) -> Result<(), RuntimeError> {
+        let Some(max) = self.limits.max_size else { return Ok(()) };
         let size = match v {
             Value::List(xs) => xs.len(),
             Value::Str(s) => s.len(),
             Value::Bytes(b) => b.len(),
             _ => 0,
         };
-        if size > self.limits.max_size {
-            return Err(RuntimeError::new(at, "too_large", format!("value of size {size} exceeds the limit of {}", self.limits.max_size)));
+        if size > max {
+            return Err(RuntimeError::new(at, "too_large", format!("value of size {size} exceeds the limit of {max}")));
         }
         Ok(())
     }
@@ -130,6 +134,19 @@ impl Interp<'_> {
                     None => return Err(RuntimeError::internal(&s.at, "set of unknown variable")),
                 }
             }
+            StmtKind::Store { name, at, value } => {
+                let key = self.eval(f, at)?;
+                let v = self.eval(f, value)?;
+                let slot = f.scopes.iter_mut().rev().find_map(|sc| sc.get_mut(name.as_str()));
+                let Some(slot) = slot else {
+                    return Err(RuntimeError::internal(&s.at, "store into unknown variable"));
+                };
+                store_into(slot, key, v).map_err(|(code, m)| RuntimeError::new(&s.at, code, m))?;
+                let slot = f.lookup(name).cloned();
+                if let Some(slot) = slot {
+                    self.check_size(&slot, &s.at)?;
+                }
+            }
             StmtKind::If { cond, then, els } => {
                 let branch = if self.eval_bool(f, cond)? { then } else { els };
                 return self.exec_block(f, branch);
@@ -183,7 +200,25 @@ impl Interp<'_> {
             ExprKind::Call { callee, args } => self.call(f, callee, args, &e.at)?,
             ExprKind::Get { target, at } => {
                 let t = self.eval(f, target)?;
+                let dyn_key;
+                let at = match at {
+                    Key::Dyn(k) => {
+                        dyn_key = match self.eval(f, k)? {
+                            Value::Int(i) => Key::Index(i),
+                            Value::Str(s) => Key::Field(s.to_string()),
+                            _ => return Err(RuntimeError::internal(&e.at, "bad dynamic key")),
+                        };
+                        &dyn_key
+                    }
+                    other => other,
+                };
                 match (&t, at) {
+                    (Value::Bytes(b), Key::Index(i)) => {
+                        let idx = if *i < 0 { b.len() as i64 + i } else { *i };
+                        usize::try_from(idx).ok().and_then(|n| b.get(n)).map(|x| Value::Int(*x as i64)).ok_or_else(|| {
+                            RuntimeError::new(&e.at, "index_out_of_bounds", format!("index {i} is out of bounds for bytes of length {}", b.len()))
+                        })?
+                    }
                     (Value::Rec(m), Key::Field(k)) => m
                         .get(k)
                         .cloned()
@@ -278,9 +313,45 @@ impl Interp<'_> {
             return self.call_module(m, named.into_iter().collect(), at);
         }
         self.host_calls += 1;
-        if self.host_calls > self.limits.max_host_calls {
-            return Err(RuntimeError::new(at, "too_many_host_calls", format!("more than {} host calls", self.limits.max_host_calls)));
+        if let Some(max) = self.limits.max_host_calls {
+            if self.host_calls > max {
+                return Err(RuntimeError::new(at, "too_many_host_calls", format!("more than {max} host calls")));
+            }
         }
         checked(self.host.call(path, named))
     }
+}
+
+
+/// `slot[key] = v` in place when the value isn't shared, copy-on-write otherwise.
+fn store_into(slot: &mut Value, key: Value, v: Value) -> Result<(), (&'static str, String)> {
+    match (slot, key, v) {
+        (Value::List(xs), Value::Int(i), v) => {
+            let len = xs.len();
+            let idx = if i < 0 { len as i64 + i } else { i };
+            let n = usize::try_from(idx).ok().filter(|n| *n < len)
+                .ok_or(("index_out_of_bounds", format!("index {i} is out of bounds for a list of length {len}")))?;
+            Rc::make_mut(xs)[n] = v;
+        }
+        (Value::Rec(m), Value::Str(k), v) => {
+            Rc::make_mut(m).insert(k.to_string(), v);
+        }
+        (Value::Bytes(b), Value::Int(i), Value::Int(x)) => {
+            let len = b.len();
+            let idx = if i < 0 { len as i64 + i } else { i };
+            let n = usize::try_from(idx).ok().filter(|n| *n < len)
+                .ok_or(("index_out_of_bounds", format!("index {i} is out of bounds for bytes of length {len}")))?;
+            let byte = u8::try_from(x).map_err(|_| ("builtin_error", format!("{x} is not a byte (0..=255)")))?;
+            match Rc::get_mut(b) {
+                Some(buf) => buf[n] = byte,
+                None => {
+                    let mut copy = b.to_vec();
+                    copy[n] = byte;
+                    *b = Rc::from(copy);
+                }
+            }
+        }
+        _ => return Err(("internal", "checker invariant violated: bad store".into())),
+    }
+    Ok(())
 }

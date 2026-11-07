@@ -14,7 +14,7 @@ export type Expr =
   | { ref: string }
   | { call: string; args?: Expr[] | Record<string, Expr> }
   | { rec: Record<string, Expr> }
-  | { get: Expr; at: string | number }
+  | { get: Expr; at: Expr }
   | { and: Expr[] }
   | { or: Expr[] }
   | { fn: { params: Record<string, ObjType>; returns: ObjType; body: Stmt[] } }
@@ -23,6 +23,7 @@ export type Expr =
 export type Stmt =
   | { let: string; mut?: boolean; type?: ObjType; value: Expr }
   | { set: string; value: Expr }
+  | { store: string; at: Expr; value: Expr }
   | { if: Expr; then: Stmt[]; else?: Stmt[] }
   | { while: Expr; do: Stmt[] }
   | { return: Expr }
@@ -49,7 +50,7 @@ export const ExprSchema: z.ZodType<Expr> = z.lazy(() =>
       args: z.union([z.array(ExprSchema), z.record(Ident, ExprSchema)]).optional(),
     }).describe("Call. Named args (object) for imports/modules/lambdas; positional (array) for built-ins."),
     z.strictObject({ rec: z.record(z.string(), ExprSchema) }).describe("Record literal"),
-    z.strictObject({ get: ExprSchema, at: z.union([z.string(), z.number().int()]) }).describe("Field or index access"),
+    z.strictObject({ get: ExprSchema, at: ExprSchema }).describe("Field or index access. `at` is a field name, an integer index, or an expression computing an int (list, bytes) or string (map)."),
     z.strictObject({ and: z.array(ExprSchema).min(2) }),
     z.strictObject({ or: z.array(ExprSchema).min(2) }),
     z.strictObject({
@@ -63,6 +64,7 @@ export const StmtSchema: z.ZodType<Stmt> = z.lazy(() =>
   z.union([
     z.strictObject({ let: Ident, mut: z.boolean().optional(), type: ObjTypeSchema.optional(), value: ExprSchema }),
     z.strictObject({ set: Ident, value: ExprSchema }),
+    z.strictObject({ store: Ident, at: ExprSchema, value: ExprSchema }).describe("Write into a mut list (int index), map (string key) or bytes (int index, byte value) in place."),
     z.strictObject({ if: ExprSchema, then: z.array(StmtSchema), else: z.array(StmtSchema).optional() }),
     z.strictObject({ while: ExprSchema, do: z.array(StmtSchema) }),
     z.strictObject({ return: ExprSchema }),
