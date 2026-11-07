@@ -15,9 +15,10 @@ use objscript::{
     load, compile
 };
 use std::path::Path;
+use objscript::types::Type;
 use serde_json::json;
 
-pub const USAGE: &str = "usage: objscript <catalog|check|run> <script.json> [--dep PATH=FILE]... [--dep-dir DIR]... [--args JSON] [--fuel N] [--max-size N] [--max-host-calls N] [--max-depth N]\n\
+pub const USAGE: &str = "usage: objscript <catalog|check|run> <script.json> [--dep PATH=FILE]... [--dep-dir DIR]... [--args JSON] [--arg NAME=VALUE]... [--fuel N] [--max-size N] [--max-host-calls N] [--max-depth N]\n\
 the CLI runs trusted scripts, so fuel, size and host-call limits are off unless given; call depth is always limited (default 64)";
 
 /// Every `*.json` in `dir` that declares a module `name` becomes importable by
@@ -69,6 +70,7 @@ fn real_main(args: &[String]) -> Result<ExitCode, String> {
     let mut deps = Vec::new();
     let mut run_args = json!({});
     let mut limits = Limits::unlimited();
+    let mut named_args: Vec<(String, String)> = Vec::new();
     let mut i = 2;
     while i < args.len() {
         let val = args.get(i + 1).ok_or_else(|| format!("{} needs a value", args[i]))?;
@@ -87,6 +89,10 @@ fn real_main(args: &[String]) -> Result<ExitCode, String> {
             "--max-size" => limits.max_size = Some(val.parse().map_err(|_| "--max-size needs a number")?),
             "--max-host-calls" => limits.max_host_calls = Some(val.parse().map_err(|_| "--max-host-calls needs a number")?),
             "--max-depth" => limits.max_depth = val.parse().map_err(|_| "--max-depth needs a number")?,
+            "--arg" => {
+                let (k, v) = val.split_once('=').ok_or("--arg needs NAME=VALUE")?;
+                named_args.push((k.to_string(), v.to_string()));
+            }
             "--args" => run_args = serde_json::from_str(val).map_err(|e| format!("--args: {e}"))?,
             other => return Err(format!("unknown flag {other}")),
         }
@@ -101,6 +107,18 @@ fn real_main(args: &[String]) -> Result<ExitCode, String> {
             return Ok(ExitCode::FAILURE);
         }
     };
+
+    // --arg values are typed by the script's declared params: strings stay strings,
+    // everything else is parsed as JSON (so n_new=8 is an int and flag=true a bool).
+    for (k, v) in named_args {
+        let param = program.entry().params.iter().find(|p| p.name == k)
+            .ok_or_else(|| format!("--arg {k}: the script has no param \"{k}\""))?;
+        let is_str = matches!(&param.ty, Type::Str) || matches!(&param.ty, Type::Option(t) if **t == Type::Str);
+        let value = if is_str { json!(v) } else {
+            serde_json::from_str(&v).map_err(|e| format!("--arg {k}: {v:?} is not valid JSON for type {}: {e}", param.ty))?
+        };
+        run_args[k] = value;
+    }
 
     match cmd {
         "check" => {

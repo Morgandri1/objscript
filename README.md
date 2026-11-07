@@ -235,6 +235,7 @@ The JSON Schema in `schema/objscript.schema.json` gives editors autocomplete (ad
 cargo run -- catalog                                   # built-ins + host capabilities, as JSON
 cargo run -- check examples/broken.json                # every type error at once
 cargo run -- run   examples/sum.json --args '{"n": 100}'
+cargo run -- run   examples/sum.json --arg n=100        # typed by the script's params
 cargo run -- run   examples/loop.json                  # stops with out_of_fuel
 cargo run -- run   examples/fetch.json --args '{"url": "https://api.example.com"}'
 ```

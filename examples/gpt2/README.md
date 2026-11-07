@@ -17,7 +17,7 @@ uv run --with numpy examples/gpt2/generate.py --bits 16 \
 # 3. run it (release build recommended)
 cargo build --release
 ./target/release/objscript run ../objscript-gpt/gpt2.json --dep-dir ../objscript-gpt/modules \
-    --args '{"prompt": "Once upon a time", "n_new": 8}'
+    --arg prompt="Once upon a time" --arg n_new=8
 ```
 
 It prints each token as it is generated and returns `{text, ids, new_ids}`. Decoding is
