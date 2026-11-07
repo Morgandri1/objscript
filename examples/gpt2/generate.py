@@ -278,13 +278,24 @@ def block(i, cfg):
                   {"rec": {"x": LF, "k": LF, "v": LF}}, body, imports,
                   f"Transformer block {i}: returns the new hidden state and this position's k and v.")
 
+def wte_chunks(cfg):
+    """[(start_row, end_row)] of the embedding table, split so no module file exceeds GitHub's 100 MB limit."""
+    R, V = cfg["wte_chunk_rows"], cfg["vocab"]
+    return [(a, min(a + R, V)) for a in range(0, V, R)]
+
 def embed(cfg, bits):
-    d, w = cfg["d"], bits // 8
+    d, w, R = cfg["d"], bits // 8, cfg["wte_chunk_rows"]
+    chunks = wte_chunks(cfg)
+    empty = rec(q=call("bytes_new", 0), s=call("bytes_new", 0))
     return module("@gpt2/embed", {"id": "int", "pos": "int"}, LF, [
-        let("t", call("wte")), let("p", call("wpe")),
+        let("p", call("wpe")),
+        let("c", div(ref("id"), R)),
+        let("t", empty, mut=True),
+        *[if_(eq(ref("c"), i), [set_("t", call(f"wte{i}"))]) for i in range(len(chunks))],
         let("q", get(ref("t"), "q")), let("s", get(ref("t"), "s")),
-        let("sc", call("read_f32", ref("s"), mul(ref("id"), 4))),
-        let("row", mul(ref("id"), d)), let("prow", mul(ref("pos"), d)),
+        let("local", sub(ref("id"), mul(ref("c"), R))),
+        let("sc", call("read_f32", ref("s"), mul(ref("local"), 4))),
+        let("row", mul(ref("local"), d)), let("prow", mul(ref("pos"), d)),
         let("out", call("repeat", F0, d), mut=True),
         *counted("i", d, [
             store("out", ref("i"),
@@ -292,16 +303,29 @@ def embed(cfg, bits):
                       call("read_f32", get(ref("p"), "b"), mul(add(ref("prow"), ref("i")), 4)))),
         ]),
         ret(ref("out")),
-    ], imports={"wte": wname("wte"), "wpe": wname("wpe")}, description="Token + position embedding.")
+    ], imports={**{f"wte{i}": wname(f"wte_{i}") for i in range(len(chunks))}, "wpe": wname("wpe")},
+       description="Token + position embedding. The token table is split into row chunks; only the chunk holding the id is loaded.")
 
 def head(cfg):
-    d, V = cfg["d"], cfg["vocab"]
-    return module("@gpt2/head", {"x": LF}, LF, [
-        let("f", call("lnf")), let("t", call("wte")),
+    d = cfg["d"]
+    chunks = wte_chunks(cfg)
+    body = [
+        let("f", call("lnf")),
         let("h", call("layernorm", ref("x"), get(ref("f"), "g"), get(ref("f"), "b"), d)),
-        ret(call("linear", ref("h"), get(ref("t"), "q"), get(ref("t"), "s"), call("bytes_new", V * 4), d, V)),
-    ], imports={"lnf": wname("ln_f"), "wte": wname("wte"), "layernorm": "@gpt2/layernorm", "linear": "@gpt2/linear"},
-       description="Final LayerNorm and the tied output projection: logits over the vocabulary.")
+        let("out", call("repeat", F0, 0), mut=True),
+    ]
+    for i, (a, b) in enumerate(chunks):
+        body += [
+            let(f"t{i}", call(f"wte{i}")),
+            set_("out", call("concat_lists", ref("out"),
+                             call("linear", ref("h"), get(ref(f"t{i}"), "q"), get(ref(f"t{i}"), "s"),
+                                  call("bytes_new", (b - a) * 4), d, b - a))),
+        ]
+    body.append(ret(ref("out")))
+    return module("@gpt2/head", {"x": LF}, LF, body,
+        imports={**{f"wte{i}": wname(f"wte_{i}") for i in range(len(chunks))},
+                 "lnf": wname("ln_f"), "layernorm": "@gpt2/layernorm", "linear": "@gpt2/linear"},
+        description="Final LayerNorm and the tied output projection, chunk by chunk: logits over the vocabulary.")
 
 # ---------------------------------------------------------------------- tokenizer
 
@@ -452,7 +476,7 @@ def main_script(cfg, progress=False):
 
 # ------------------------------------------------------------------------ driver
 
-def weight_modules(w, bits):
+def weight_modules(w, bits, wte_chunk_rows):
     """name -> module for every tensor."""
     mods = []
     def mat(name, w_in_out, bias):
@@ -465,10 +489,12 @@ def weight_modules(w, bits):
         mods.append(module(wname(name), {}, {"rec": {"g": "bytes", "b": "bytes"}},
                            [ret(rec(g={"call": "from_base64", "args": [b64(f32le(g))]},
                                     b={"call": "from_base64", "args": [b64(f32le(b))]}))]))
-    cfg = config(w)
-    q, s = quantize(w["wte.weight"].astype(np.float64), bits)
-    mods.append(module(wname("wte"), {}, {"rec": {"q": "bytes", "s": "bytes"}},
-                       [ret(rec(q={"call": "from_base64", "args": [b64(q)]}, s={"call": "from_base64", "args": [b64(f32le(s))]}))]))
+    cfg = config(w); cfg["wte_chunk_rows"] = wte_chunk_rows
+    for i, (a, b) in enumerate(wte_chunks(cfg)):
+        q, s = quantize(w["wte.weight"][a:b].astype(np.float64), bits)
+        mods.append(module(wname(f"wte_{i}"), {}, {"rec": {"q": "bytes", "s": "bytes"}},
+                           [ret(rec(q={"call": "from_base64", "args": [b64(q)]}, s={"call": "from_base64", "args": [b64(f32le(s))]}))],
+                           description=f"Token embedding rows {a}..{b - 1}, int{bits} with per-row f32 scales."))
     mods.append(module(wname("wpe"), {}, {"rec": {"b": "bytes"}},
                        [ret(rec(b={"call": "from_base64", "args": [b64(f32le(w["wpe.weight"]))]}))]))
     ln("ln_f", w["ln_f.weight"], w["ln_f.bias"])
@@ -493,6 +519,8 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--bits", type=int, choices=(8, 16), default=8)
     ap.add_argument("--n-head", type=int, default=None)
+    ap.add_argument("--wte-chunk-rows", type=int, default=8192,
+                    help="rows of the token table per module (8192 keeps every file under ~17 MB at int16)")
     ap.add_argument("--progress", action="store_true",
                     help="print each token as it is generated (CLI only: needs the std/io/print capability, "
                          "and under the async TypeScript host every host call replays the whole run)")
@@ -501,12 +529,12 @@ def main():
         w = tiny_weights(50257); n_head = a.n_head or 2
     else:
         w = load_safetensors(a.weights); n_head = a.n_head or 12
-    cfg = config(w); cfg["n_head"] = n_head
+    cfg = config(w); cfg["n_head"] = n_head; cfg["wte_chunk_rows"] = a.wte_chunk_rows
     assert cfg["d"] % 8 == 0 and cfg["d"] % n_head == 0
     md = os.path.join(a.out, "modules"); os.makedirs(md, exist_ok=True)
     mods = [lib_vadd(), lib_linear(a.bits), lib_layernorm(), lib_gelu(), lib_softmax(), lib_attention(),
             embed(cfg, a.bits), head(cfg)] + [block(i, cfg) for i in range(cfg["n_layer"])]
-    mods += tokenizer_modules(a.vocab, a.merges) + weight_modules(w, a.bits)
+    mods += tokenizer_modules(a.vocab, a.merges) + weight_modules(w, a.bits, a.wte_chunk_rows)
     for m in mods:
         write(os.path.join(md, m["name"].lstrip("@").replace("/", "_") + ".json"), m)
     write(os.path.join(a.out, "gpt2.json"), main_script(cfg, a.progress))

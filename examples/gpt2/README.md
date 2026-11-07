@@ -35,6 +35,7 @@ interpreter steps.
 | `@gpt2/embed`, `@gpt2/head` | token+position embedding, final LayerNorm and tied output projection |
 | `@gpt2/encode`, `@gpt2/decode` | byte-level BPE using the native `regex_find_all` with GPT-2's pattern |
 | `@gpt2/w/*` | one module per tensor; each returns `bytes` built with `from_base64` |
+| `@gpt2/w/wte_0..6` | the token table, split into 8192-row chunks (`--wte-chunk-rows`) so every file stays well under GitHub's 100 MB limit; `embed` loads only the chunk holding the id, `head` walks all of them |
 
 ## Weights
 
