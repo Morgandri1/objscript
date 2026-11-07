@@ -135,11 +135,12 @@ impl Host for ReplayHost {
 
 fn parse_limits(v: &J) -> Limits {
     let mut l = Limits::default();
-    let get = |k: &str| v.get(k).and_then(J::as_u64);
+    // Absent = default; `null` = unlimited; a number = that limit.
+    let get = |k: &str| v.get(k).map(J::as_u64);
     if let Some(x) = get("fuel") { l.fuel = x; }
-    if let Some(x) = get("max_depth") { l.max_depth = x as usize; }
-    if let Some(x) = get("max_host_calls") { l.max_host_calls = x as u32; }
-    if let Some(x) = get("max_size") { l.max_size = x as usize; }
+    if let Some(Some(x)) = get("max_depth") { l.max_depth = x as usize; }
+    if let Some(x) = get("max_host_calls") { l.max_host_calls = x.map(|x| x as u32); }
+    if let Some(x) = get("max_size") { l.max_size = x.map(|x| x as usize); }
     l
 }
 

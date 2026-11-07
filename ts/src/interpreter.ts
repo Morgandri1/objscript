@@ -11,7 +11,7 @@ import type {
 } from "./types";
 import { isFilePath, toSource } from "./types"
 import { builtins, compile, type Compiled } from "../pkg/objscript_wasm";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { dirname, resolve as resolvePath } from "node:path";
 
 export interface RunOptions<C> {
@@ -52,6 +52,17 @@ export class ObjScriptInterpreter<C = undefined> {
       const abs = resolvePath(file);
       const source = JSON.parse(await readFile(abs, "utf8")) as Source;
       this.register(abs, source, dirname(abs));
+    }
+    return this;
+  }
+
+  /** Load every `*.json` in a folder that declares a module `name` (like the CLI's `--dep-dir`). */
+  async loadModuleDir(dir: string): Promise<this> {
+    const files = (await readdir(dir)).filter((f) => f.endsWith(".json")).sort();
+    for (const f of files) {
+      const abs = resolvePath(dir, f);
+      const source = JSON.parse(await readFile(abs, "utf8")) as Source;
+      if (source.name) this.register(abs, source, dirname(abs));
     }
     return this;
   }

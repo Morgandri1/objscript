@@ -4,7 +4,8 @@ export type ObjType =
   | { rec: Record<string, ObjType> }
   | { fn: { params: Record<string, ObjType>; returns: ObjType } };
 
-export interface Limits { fuel?: number; max_depth?: number; max_host_calls?: number; max_size?: number }
+/** Omit a field for the default; `null` lifts it. `max_depth` can't be lifted. */
+export interface Limits { fuel?: number | null; max_depth?: number; max_host_calls?: number | null; max_size?: number | null }
 export interface Diagnostic { path: string; code: string; message: string; hint?: string }
 export interface RuntimeError { path: string; code: string; message: string }
 
