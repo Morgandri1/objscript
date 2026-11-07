@@ -16,12 +16,13 @@ uv run --with numpy examples/gpt2/generate.py --bits 16 \
     --weights model.safetensors --vocab vocab.json --merges merges.txt --out ../objscript-gpt
 # 3. run it (release build recommended)
 cargo build --release
-./target/release/objscript run ../objscript-gpt/gpt2.json --dep-dir ../objscript-gpt/modules \
+./target/release/objscript run ../objscript-gpt/gpt2.json -d ../objscript-gpt/modules \
     --arg prompt="Once upon a time" --arg n_new=8
 ```
 
-It prints each token as it is generated and returns `{text, ids, new_ids}`. Decoding is
-greedy. Expect minutes per token: a token is about 125M multiply-adds, each a handful of
+It returns `{text, ids, new_ids}` (generate with `--progress` to also print each token as it
+appears; CLI only). Decoding is greedy. Run it from a folder containing `modules/` and `-d` is
+optional. Expect minutes per token: a token is about 125M multiply-adds, each a handful of
 interpreter steps.
 
 ## Layout (`<out>/`)

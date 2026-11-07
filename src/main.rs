@@ -18,7 +18,7 @@ use std::path::Path;
 use objscript::types::Type;
 use serde_json::json;
 
-pub const USAGE: &str = "usage: objscript <catalog|check|run> <script.json> [--dep PATH=FILE]... [--dep-dir DIR]... [--args JSON] [--arg NAME=VALUE]... [--fuel N] [--max-size N] [--max-host-calls N] [--max-depth N]\n\
+pub const USAGE: &str = "usage: objscript <catalog|check|run> <script.json> [--dep PATH=FILE]... [--deps|-d DIR (default ./modules)]... [--args JSON] [--arg NAME=VALUE]... [--fuel N] [--max-size N] [--max-host-calls N] [--max-depth N]\n\
 the CLI runs trusted scripts, so fuel, size and host-call limits are off unless given; call depth is always limited (default 64)";
 
 /// Every `*.json` in `dir` that declares a module `name` becomes importable by
@@ -68,6 +68,7 @@ fn real_main(args: &[String]) -> Result<ExitCode, String> {
     let file = args.get(1).ok_or(USAGE)?;
 
     let mut deps = Vec::new();
+    let mut explicit_deps = false;
     let mut run_args = json!({});
     let mut limits = Limits::unlimited();
     let mut named_args: Vec<(String, String)> = Vec::new();
@@ -78,12 +79,14 @@ fn real_main(args: &[String]) -> Result<ExitCode, String> {
             "--dep" => {
                 let (p, f) = val.split_once('=').ok_or("--dep needs PATH=FILE")?;
                 deps.push((p.to_string(), f.to_string()));
+                explicit_deps = true;
             }
-            "--dep-dir" => {
+            "--deps" | "-d" => {
                 if !Path::new(val).is_dir() {
-                    return Err(format!("--dep-dir: {val} is not a directory"));
+                    return Err(format!("{}: {val} is not a directory", args[i]));
                 }
                 deps.extend(dir_deps(val)?);
+                explicit_deps = true;
             }
             "--fuel" => limits.fuel = Some(val.parse().map_err(|_| "--fuel needs a number")?),
             "--max-size" => limits.max_size = Some(val.parse().map_err(|_| "--max-size needs a number")?),
@@ -97,6 +100,10 @@ fn real_main(args: &[String]) -> Result<ExitCode, String> {
             other => return Err(format!("unknown flag {other}")),
         }
         i += 2;
+    }
+    // With no --dep/--deps, modules come from ./modules when it exists.
+    if !explicit_deps && Path::new("modules").is_dir() {
+        deps.extend(dir_deps("modules")?);
     }
 
     let src = load(file)?;

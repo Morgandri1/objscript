@@ -240,7 +240,7 @@ cargo run -- run   examples/loop.json                  # stops with out_of_fuel
 cargo run -- run   examples/fetch.json --args '{"url": "https://api.example.com"}'
 ```
 
-Library modules are passed with `--dep IMPORT_PATH=FILE`, or all at once with `--dep-dir DIR` (every `*.json` there that declares a `name`). All output is JSON.
+Library modules are passed with `--dep IMPORT_PATH=FILE`, or all at once with `--deps DIR` / `-d DIR` (every `*.json` there that declares a `name`). With neither flag, `./modules` is loaded if it exists. All output is JSON.
 
 | Example | Shows |
 |---|---|

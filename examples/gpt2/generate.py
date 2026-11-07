@@ -8,7 +8,7 @@ the BPE tokenizer, and the entry script. Needs numpy.
 
   uv run --with numpy examples/gpt2/generate.py --tiny --vocab vocab.json --merges merges.txt --out /tmp/tiny
 
-Everything lands in <out>/modules (flat, so `objscript run <out>/gpt2.json --dep-dir <out>/modules`
+Everything lands in <out>/modules (flat, so `objscript run <out>/gpt2.json -d <out>/modules`
 finds it). Weights are int8 (or int16) per output row with f32 scales, embedded as base64
 inside modules that return `bytes`; nothing needs file access at runtime.
 """

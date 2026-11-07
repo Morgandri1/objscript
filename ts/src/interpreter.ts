@@ -56,7 +56,7 @@ export class ObjScriptInterpreter<C = undefined> {
     return this;
   }
 
-  /** Load every `*.json` in a folder that declares a module `name` (like the CLI's `--dep-dir`). */
+  /** Load every `*.json` in a folder that declares a module `name` (like the CLI's `--deps`). */
   async loadModuleDir(dir: string): Promise<this> {
     const files = (await readdir(dir)).filter((f) => f.endsWith(".json")).sort();
     for (const f of files) {

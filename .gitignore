@@ -2,3 +2,4 @@ target
 ts/node_modules
 ts/pkg
 ts/pkg-web
+__pycache__/
