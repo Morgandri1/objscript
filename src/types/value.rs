@@ -106,6 +106,16 @@ pub fn conform(v: &Value, ty: &Type, path: &str) -> Result<Value, String> {
         (Type::Float, Value::Int(i)) => Ok(Value::Float(*i as f64)),
         (Type::Str, Value::Str(_)) => Ok(v.clone()),
         (Type::Bytes, Value::Bytes(_)) => Ok(v.clone()),
+        // Bytes cross JSON boundaries as arrays of ints.
+        (Type::Bytes, Value::List(xs)) => xs
+            .iter()
+            .map(|x| match x {
+                Value::Int(i) => u8::try_from(*i).ok(),
+                _ => None,
+            })
+            .collect::<Option<Vec<u8>>>()
+            .map(|b| Value::Bytes(Rc::from(b)))
+            .ok_or_else(|| format!("at {path}: expected bytes (an array of ints 0..=255)")),
         (Type::Option(_), Value::Null) => Ok(Value::Null),
         (Type::Option(inner), _) => conform(v, inner, path),
         (Type::List(t), Value::List(xs)) => {

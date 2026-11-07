@@ -6,7 +6,7 @@
 //!
 //! The only way to get a [`Program`] is through [`check_program`].
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use crate::types::ast::*;
@@ -57,39 +57,38 @@ fn is_file_path(p: &str) -> bool {
 }
 
 fn check_module(m: &mut Module, sigs: &HashMap<String, FnType>, host: &dyn Host) -> Vec<Diagnostic> {
-    let mut c = Checker { imports: HashMap::new(), scopes: Vec::new(), returns: Vec::new(), errors: Vec::new() };
+    let mut c = Checker { imports: HashMap::new(), broken: HashSet::new(), scopes: Vec::new(), returns: Vec::new(), errors: Vec::new() };
 
     for (alias, path) in &m.imports {
         let at = join("/imports", alias);
-        let sig = if path.starts_with("std/") {
-            host.caps().iter()
-                .find(|c| c.path == path)
-                .map(|c| c.signature.clone())
+        // Modules are `@org/...` or file paths; anything else must be a capability the host grants.
+        let sig = if path.starts_with('@') || is_file_path(path) {
+            sigs.get(path).cloned()
                 .ok_or_else(|| {
                     Diagnostic::new(
-                        &at, "capability_not_granted", 
-                        format!("host capability \"{path}\" is not available")
-                    ).hint("check the catalog for granted std/* capabilities")
-                })
-        } else if path.starts_with('@') || is_file_path(path) {
-            sigs.get(path).cloned()
-                .ok_or_else(|| { 
-                    Diagnostic::new(
-                        &at, "unknown_module", 
+                        &at, "unknown_module",
                         format!("module \"{path}\" is not loaded")
                     ).hint("load the module's file into the interpreter, then import it by name or path")
                 })
         } else {
-            Err(Diagnostic::new(
-                &at, "invalid_import", 
-                format!("\"{path}\" is not a valid import")
-            ).hint("imports are std/*, @org/pkg/name, or a path to a .json file; std functions need no import"))
+            host.caps().iter()
+                .find(|c| c.path == *path)
+                .map(|c| c.signature.clone())
+                .ok_or_else(|| {
+                    Diagnostic::new(
+                        &at, "capability_not_granted",
+                        format!("host capability \"{path}\" is not available")
+                    ).hint("imports are granted host capabilities (see the catalog), @org/pkg/name modules, or paths to .json files; built-ins need no import")
+                })
         };
         match sig {
             Ok(sig) => {
                 c.imports.insert(alias.clone(), sig);
             }
-            Err(d) => c.errors.push(d),
+            Err(d) => {
+                c.broken.insert(alias.clone());
+                c.errors.push(d)
+            }
         }
     }
 
@@ -108,6 +107,8 @@ fn check_module(m: &mut Module, sigs: &HashMap<String, FnType>, host: &dyn Host)
 struct Checker {
     /// alias -> signature, for both host capabilities and modules.
     imports: HashMap<String, FnType>,
+    /// Aliases whose import already failed; calls to them aren't reported again.
+    broken: HashSet<String>,
     scopes: Vec<HashMap<String, Binding>>,
     returns: Vec<Type>,
     errors: Vec<Diagnostic>,
@@ -178,6 +179,45 @@ impl Checker {
                             .hint("declare it with \"mut\": true (variables captured by a fn are always read-only)"));
                     }
                     self.check_against(value, &b.ty);
+                }
+            },
+            StmtKind::Store { name, at: key, value } => match self.lookup(name) {
+                None => {
+                    let d = Diagnostic::new(join(&at, "store"), "unknown_variable", format!("\"{name}\" is not defined"))
+                        .hint(format!("in scope: {}", self.names_in_scope()));
+                    self.report(d);
+                    self.check_expr(key, None);
+                    self.check_expr(value, None);
+                }
+                Some(b) => {
+                    if !b.mutable {
+                        self.report(Diagnostic::new(join(&at, "store"), "immutable", format!("\"{name}\" is not mutable"))
+                            .hint("declare it with \"mut\": true (variables captured by a fn are always read-only)"));
+                    }
+                    match &b.ty {
+                        Type::List(t) => {
+                            self.check_against(key, &Type::Int);
+                            self.check_against(value, t);
+                        }
+                        Type::Map(t) => {
+                            self.check_against(key, &Type::Str);
+                            self.check_against(value, t);
+                        }
+                        Type::Bytes => {
+                            self.check_against(key, &Type::Int);
+                            self.check_against(value, &Type::Int);
+                        }
+                        Type::Unknown => {
+                            self.check_expr(key, None);
+                            self.check_expr(value, None);
+                        }
+                        other => {
+                            self.report(Diagnostic::new(join(&at, "store"), "invalid_store", format!("cannot store into {other}"))
+                                .hint("store works on list, map and bytes variables (records have fixed fields: rebuild them with {\"set\": ...})"));
+                            self.check_expr(key, None);
+                            self.check_expr(value, None);
+                        }
+                    }
                 }
             },
             StmtKind::If { cond, then, els } => {
@@ -295,8 +335,35 @@ impl Checker {
 
             ExprKind::Get { target, at: key } => {
                 let t = self.check_expr(target, None);
+                if let Key::Dyn(k) = key {
+                    return match &t {
+                        Type::Unknown => {
+                            self.check_expr(k, None);
+                            Type::Unknown
+                        }
+                        Type::List(v) => {
+                            self.check_against(k, &Type::Int);
+                            (**v).clone()
+                        }
+                        Type::Map(v) => {
+                            self.check_against(k, &Type::Str);
+                            (**v).clone()
+                        }
+                        Type::Bytes => {
+                            self.check_against(k, &Type::Int);
+                            Type::Int
+                        }
+                        other => {
+                            self.check_expr(k, None);
+                            self.report(Diagnostic::new(&at, "invalid_get", format!("cannot index {other} with a computed key"))
+                                .hint("computed keys work on list<T> (int), map<T> (string) and bytes (int); records have fixed fields"));
+                            Type::Unknown
+                        }
+                    };
+                }
                 match (&t, &*key) {
                     (Type::Unknown, _) => Type::Unknown,
+                    (Type::Bytes, Key::Index(_)) => Type::Int,
                     (Type::Rec(fields), Key::Field(k)) => match fields.get(k.as_str()) {
                         Some(ft) => ft.clone(),
                         None => {
@@ -395,9 +462,11 @@ impl Checker {
                 }
             };
         }
-        let builtins: Vec<&str> = stdlib::BUILTINS.iter().map(|(n, _, _)| *n).collect();
-        self.report(Diagnostic::new(join(at, "call"), "unknown_function", format!("\"{callee}\" is not a function in scope"))
-            .hint(format!("import it, or use a built-in: {}", builtins.join(", "))));
+        if !self.broken.contains(callee) {
+            let builtins: Vec<&str> = stdlib::BUILTINS.iter().map(|(n, _, _)| *n).collect();
+            self.report(Diagnostic::new(join(at, "call"), "unknown_function", format!("\"{callee}\" is not a function in scope"))
+                .hint(format!("import it, or use a built-in: {}", builtins.join(", "))));
+        }
         // Still check the arguments so nested errors surface in the same round.
         match args {
             Args::Positional(xs) => xs.iter_mut().for_each(|x| {
@@ -450,8 +519,21 @@ impl Checker {
     }
 
     fn check_builtin(&mut self, name: &str, xs: &mut [Expr], at: &str, expected: Option<&Type>) -> Type {
+        let sig_text = || stdlib::BUILTINS.iter().find(|(b, _, _)| *b == name).map(|(_, s, _)| *s).unwrap_or("");
+        if let Some((params, ret)) = stdlib::ext::mono_sig(name) {
+            if xs.len() != params.len() {
+                self.report(Diagnostic::new(join(at, "args"), "arity", format!("{name} takes {} args, got {}", params.len(), xs.len()))
+                    .hint(format!("{name}{}", sig_text())));
+                return Type::Unknown;
+            }
+            for (x, t) in xs.iter_mut().zip(&params) {
+                self.check_against(x, t);
+            }
+            return ret;
+        }
         let want = match name {
-            "not" | "to_string" | "len" => Some(1),
+            "not" | "to_string" | "len" | "abs" | "sort" | "reverse" => Some(1),
+            "slice" => Some(3),
             "concat" => None,
             _ => Some(2),
         };
@@ -468,7 +550,7 @@ impl Checker {
         let num_hint = float_hint.then_some(&float_ty);
 
         match name {
-            "add" | "sub" | "mul" | "div" | "mod" => {
+            "add" | "sub" | "mul" | "div" | "mod" | "min" | "max" => {
                 let ta = self.check_expr(&mut xs[0], num_hint);
                 if !ta.is_numeric() {
                     self.report(Diagnostic::new(&xs[0].at, "type_mismatch", format!("{name} needs int or float, found {ta}")));
@@ -476,6 +558,62 @@ impl Checker {
                 }
                 self.check_against(&mut xs[1], &ta);
                 ta
+            }
+            "abs" => {
+                let ta = self.check_expr(&mut xs[0], num_hint);
+                if !ta.is_numeric() {
+                    self.report(Diagnostic::new(&xs[0].at, "type_mismatch", format!("abs needs int or float, found {ta}")));
+                    return Type::Unknown;
+                }
+                ta
+            }
+            "slice" => {
+                let t = self.check_expr(&mut xs[0], None);
+                self.check_against(&mut xs[1], &Type::Int);
+                self.check_against(&mut xs[2], &Type::Int);
+                match t {
+                    Type::Str | Type::Bytes | Type::List(_) | Type::Unknown => t,
+                    other => {
+                        self.report(Diagnostic::new(&xs[0].at, "type_mismatch", format!("slice needs a string, list or bytes, found {other}")));
+                        Type::Unknown
+                    }
+                }
+            }
+            "repeat" => {
+                let t = self.check_expr(&mut xs[0], None);
+                self.check_against(&mut xs[1], &Type::Int);
+                if matches!(t, Type::Fn(_)) {
+                    self.report(Diagnostic::new(&xs[0].at, "type_mismatch", "cannot repeat a function"));
+                }
+                if t == Type::Null {
+                    self.report(Diagnostic::new(&xs[0].at, "cannot_infer", "cannot infer a list type from null"));
+                }
+                Type::List(Box::new(t))
+            }
+            "reverse" | "sort" => {
+                let t = self.check_expr(&mut xs[0], expected);
+                match &t {
+                    Type::List(e) if name == "reverse" || e.is_numeric() || **e == Type::Str => t,
+                    Type::Unknown => t,
+                    other => {
+                        self.report(Diagnostic::new(&xs[0].at, "type_mismatch", format!("{name} needs a list{}, found {other}", if name == "sort" { " of ints, floats or strings" } else { "" })));
+                        Type::Unknown
+                    }
+                }
+            }
+            "concat_lists" => {
+                let ta = self.check_expr(&mut xs[0], expected);
+                match ta {
+                    Type::List(_) => {
+                        self.check_against(&mut xs[1], &ta);
+                        ta
+                    }
+                    Type::Unknown => Type::Unknown,
+                    other => {
+                        self.report(Diagnostic::new(&xs[0].at, "type_mismatch", format!("concat_lists needs lists, found {other}")));
+                        Type::Unknown
+                    }
+                }
             }
             "lt" | "lte" | "gt" | "gte" => {
                 let ta = self.check_expr(&mut xs[0], num_hint);
@@ -512,8 +650,8 @@ impl Checker {
             }
             "len" => {
                 let t = self.check_expr(&mut xs[0], None);
-                if !matches!(t, Type::Str | Type::List(_) | Type::Unknown) {
-                    self.report(Diagnostic::new(&xs[0].at, "type_mismatch", format!("len needs a string or list, found {t}")));
+                if !matches!(t, Type::Str | Type::List(_) | Type::Bytes | Type::Map(_) | Type::Rec(_) | Type::Unknown) {
+                    self.report(Diagnostic::new(&xs[0].at, "type_mismatch", format!("len needs a string, list, bytes or map, found {t}")));
                 }
                 Type::Int
             }

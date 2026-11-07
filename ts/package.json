@@ -1,6 +1,6 @@
 {
   "name": "objscript",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "type": "module",
   "module": "src/index.ts",
   "exports": {
@@ -11,6 +11,7 @@
   },
   "scripts": {
     "build:wasm": "cd ../wasm && wasm-pack build --target nodejs --out-dir ../ts/pkg",
+    "build:wasm:web": "cd ../wasm && wasm-pack build --target web --out-dir ../ts/pkg-web",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "bump:minor": "bun ../scripts/bump.ts minor --tag",

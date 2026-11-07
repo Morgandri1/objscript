@@ -41,6 +41,10 @@ impl Host for CliHost {
                 let body = serde_json::from_str::<J>(&text).unwrap_or(J::String(text));
                 Ok(Value::from_json(&json!({ "status": status, "body": body })))
             }
+            "std/io/print" => {
+                println!("{}", args[0].1.render());
+                Ok(Value::Null)
+            }
             _ => Err(format!("{path} is not implemented")),
         }
     }
@@ -51,6 +55,11 @@ impl Host for CliHost {
                 "std/secret", 
                 "Read a named secret from the env.", 
                 parse_sig(&[("name", Type::Str)], Type::Str)
+            ),
+            Capability::new(
+                "std/io/print",
+                "Print a line to stdout.",
+                parse_sig(&[("text", Type::Str)], Type::Null)
             ),
             Capability::new(
                 "std/http/fetch",

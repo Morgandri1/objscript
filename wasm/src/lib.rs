@@ -5,21 +5,28 @@
 //! can only touch the world through host calls.
 
 use std::collections::HashMap;
-use objscript::parse::parse_module;
-use objscript::{Diagnostic, Host, Limits, Program, Value, capability, check_program, run};
+use objscript::parse::{parse_module, parse_type};
+use objscript::types::FnType;
+use objscript::capability::Capability;
+use objscript::{Diagnostic, Host, Limits, Program, Value, check_program, run};
 use serde_json::{json, Value as J};
 use wasm_bindgen::prelude::*;
 
 const SUSPEND: &str = "__objscript_suspend__";
 
 #[wasm_bindgen]
-pub struct Compiled(Program);
+pub struct Compiled {
+    program: Program,
+    caps: Vec<Capability>,
+}
 
 /// Parse + check a script. Throws an Error whose message is `{"ok":false,"errors":[...]}`.
 /// `deps`: `{ "@org/pkg/name@1": <module json>, ... }`
-/// `capabilities`: `{ "std/x": { "params": {...}, "returns": T }, ... }`
+/// `capabilities`: `{ "org/area/name": { "params": {...}, "returns": T, "description"?: "..." }, ... }`.
+/// These are the only capabilities the script may import; param order is call order.
 #[wasm_bindgen]
-pub fn compile(script: &str, deps: &str) -> Result<Compiled, JsError> {
+pub fn compile(script: &str, deps: &str, capabilities: &str) -> Result<Compiled, JsError> {
+    let caps = parse_caps(&parse_json(capabilities, "capabilities")?).map_err(|d| err_json(vec![d.to_json()]))?;
     let entry = parse_module(&parse_json(script, "script")?).map_err(|d| err_json(vec![d.to_json()]))?;
     let mut modules = HashMap::new();
     if let J::Object(deps) = parse_json(deps, "deps")? {
@@ -33,10 +40,10 @@ pub fn compile(script: &str, deps: &str) -> Result<Compiled, JsError> {
     }
 
     let program = {
-        let host = ReplayHost::new(Vec::new());
+        let host = ReplayHost::new(Vec::new(), caps.clone());
         check_program(entry, modules, &host).map_err(|ds| err_json(ds.iter().map(Diagnostic::to_json).collect()))?
     };
-    Ok(Compiled(program))
+    Ok(Compiled { program, caps })
 }
 
 #[wasm_bindgen]
@@ -51,8 +58,8 @@ impl Compiled {
             _ => Vec::new(),
         };
 
-        let mut host = ReplayHost::new(replay);
-        let out = match run(&self.0, &mut host, &args, limits) {
+        let mut host = ReplayHost::new(replay, self.caps.clone());
+        let out = match run(&self.program, &mut host, &args, limits) {
             Ok(o) => json!({
                 "type": "done", "ok": true, "value": o.value.to_json(),
                 "fuel_used": o.fuel_used, "host_calls": o.host_calls
@@ -71,12 +78,33 @@ struct ReplayHost {
     replay: Vec<J>,
     next: usize,
     pending: Option<(String, J)>,
+    caps: Vec<Capability>,
 }
 
 impl ReplayHost {
-    fn new(replay: Vec<J>) -> Self {
-        Self { replay, next: 0, pending: None }
+    fn new(replay: Vec<J>, caps: Vec<Capability>) -> Self {
+        Self { replay, next: 0, pending: None, caps }
     }
+}
+
+fn parse_caps(v: &J) -> Result<Vec<Capability>, Diagnostic> {
+    let J::Object(map) = v else {
+        return Err(Diagnostic::new("", "invalid_capabilities", "capabilities must be an object keyed by path"));
+    };
+    let mut caps = Vec::new();
+    for (path, spec) in map {
+        let at = format!("capabilities/{path}");
+        let mut params = Vec::new();
+        if let Some(J::Object(ps)) = spec.get("params") {
+            for (name, ty) in ps {
+                params.push((name.clone(), parse_type(ty, &format!("{at}/params/{name}"))?));
+            }
+        }
+        let ret = parse_type(spec.get("returns").unwrap_or(&J::Null), &format!("{at}/returns"))?;
+        let description = spec.get("description").and_then(J::as_str).unwrap_or_default();
+        caps.push(Capability::new(path.clone(), description, FnType { params, ret: Box::new(ret) }));
+    }
+    Ok(caps)
 }
 
 impl Host for ReplayHost {
@@ -100,18 +128,19 @@ impl Host for ReplayHost {
         None
     }
     
-    fn caps(&self) -> Vec<objscript::capability::Capability> {
-        vec![capability::http::http_fetch()]
+    fn caps(&self) -> Vec<Capability> {
+        self.caps.clone()
     }
 }
 
 fn parse_limits(v: &J) -> Limits {
     let mut l = Limits::default();
-    let get = |k: &str| v.get(k).and_then(J::as_u64);
+    // Absent = default; `null` = unlimited; a number = that limit.
+    let get = |k: &str| v.get(k).map(J::as_u64);
     if let Some(x) = get("fuel") { l.fuel = x; }
-    if let Some(x) = get("max_depth") { l.max_depth = x as usize; }
-    if let Some(x) = get("max_host_calls") { l.max_host_calls = x as u32; }
-    if let Some(x) = get("max_size") { l.max_size = x as usize; }
+    if let Some(Some(x)) = get("max_depth") { l.max_depth = x as usize; }
+    if let Some(x) = get("max_host_calls") { l.max_host_calls = x.map(|x| x as u32); }
+    if let Some(x) = get("max_size") { l.max_size = x.map(|x| x as usize); }
     l
 }
 

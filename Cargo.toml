@@ -3,7 +3,7 @@ members = ["wasm"]
 
 [package]
 name = "objscript"
-version = "1.2.0"
+version = "1.3.0"
 edition = "2021"
 
 [features]
@@ -12,6 +12,7 @@ cli = ["dep:ureq"]
 
 [dependencies]
 serde_json = { version = "1", features = ["preserve_order"] }
+fancy-regex = "0.14"
 ureq = { version = "2", optional = true }
 
 [[bin]]

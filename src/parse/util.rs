@@ -4,7 +4,7 @@ use crate::diag::{join, Diagnostic};
 pub const MODULE_KEYS: &[&str] = &[
     "$schema", "objscript", "name", "version", "description", "command", "imports", "params", "returns", "body", "tests",
 ];
-pub const STMT_KW: [&str; 6] = ["let", "set", "if", "while", "return", "do"];
+pub const STMT_KW: [&str; 7] = ["let", "set", "store", "if", "while", "return", "do"];
 pub const EXPR_KW: [&str; 8] = ["ref", "call", "rec", "get", "and", "or", "fn", "decode"];
 
 pub type R<T> = Result<T, Diagnostic>;

@@ -7,18 +7,18 @@ pub mod http;
 /// A capability's contract, independent of how any host implements it.
 #[derive(Clone, Debug)]
 pub struct Capability {
-    pub path: &'static str,
-    pub description: &'static str,
+    pub path: String,
+    pub description: String,
     pub signature: FnType,
 }
 
 impl Capability {
     pub fn new(
-        path: &'static str, 
-        description: &'static str, 
+        path: impl Into<String>,
+        description: impl Into<String>,
         signature: FnType
     ) -> Self {
-        Self { path, description, signature }
+        Self { path: path.into(), description: description.into(), signature }
     }
 }
 
@@ -34,5 +34,5 @@ impl PartialEq for Capability {
 
 /// path -> signature, for hosts that only need to answer `signature()`.
 pub fn signatures(caps: &[Capability]) -> HashMap<String, FnType> {
-    caps.iter().map(|c| (c.path.to_string(), c.signature.clone())).collect()
+    caps.iter().map(|c| (c.path.clone(), c.signature.clone())).collect()
 }

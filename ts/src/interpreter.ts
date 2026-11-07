@@ -11,7 +11,7 @@ import type {
 } from "./types";
 import { isFilePath, toSource } from "./types"
 import { builtins, compile, type Compiled } from "../pkg/objscript_wasm";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { dirname, resolve as resolvePath } from "node:path";
 
 export interface RunOptions<C> {
@@ -23,7 +23,7 @@ export interface RunOptions<C> {
 }
 
 export class ObjScriptInterpreter<C = undefined> {
-  /** path -> handler. Must match what the WASM side grants, or checks/runs will fail. */
+  /** path -> handler. Also the grant list: the checker only lets scripts import these. */
   private capabilities: Record<string, Capability<C>>;
   /** canonical key (absolute file path, or name for in-memory modules) -> module */
   private modules = new Map<string, { source: Source; baseDir?: string }>();
@@ -31,6 +31,8 @@ export class ObjScriptInterpreter<C = undefined> {
   private byName = new Map<string, string>();
   private limits: Limits;
   private cache = new Map<string, Compiled>();
+  /** Signatures handed to the checker: scripts may import exactly these capabilities. */
+  private grants: string;
 
   constructor(opts: { capabilities?: Capability<C>[]; limits?: Limits } = {}) {
     this.capabilities = {};
@@ -39,6 +41,9 @@ export class ObjScriptInterpreter<C = undefined> {
       this.capabilities[cap.path] = cap;
     }
     this.limits = opts.limits ?? {};
+    this.grants = JSON.stringify(Object.fromEntries(
+      Object.values(this.capabilities).map(({ path, params, returns, description }) => [path, { params, returns, description }]),
+    ));
   }
 
   /** Load module files. Each becomes importable by its `name` (if any) and by its path. */
@@ -47,6 +52,17 @@ export class ObjScriptInterpreter<C = undefined> {
       const abs = resolvePath(file);
       const source = JSON.parse(await readFile(abs, "utf8")) as Source;
       this.register(abs, source, dirname(abs));
+    }
+    return this;
+  }
+
+  /** Load every `*.json` in a folder that declares a module `name` (like the CLI's `--deps`). */
+  async loadModuleDir(dir: string): Promise<this> {
+    const files = (await readdir(dir)).filter((f) => f.endsWith(".json")).sort();
+    for (const f of files) {
+      const abs = resolvePath(dir, f);
+      const source = JSON.parse(await readFile(abs, "utf8")) as Source;
+      if (source.name) this.register(abs, source, dirname(abs));
     }
     return this;
   }
@@ -144,7 +160,7 @@ export class ObjScriptInterpreter<C = undefined> {
     if (!source.imports) return source;
     const imports: Record<string, string> = {};
     for (const [alias, spec] of Object.entries(source.imports)) {
-      if (spec.startsWith("host/")) imports[alias] = spec;
+      if (spec in this.capabilities) imports[alias] = spec;
       else if (spec.startsWith("/")) imports[alias] = spec;
       else if (isFilePath(spec)) imports[alias] = baseDir ? resolvePath(baseDir, spec) : spec;
       else imports[alias] = this.byName.get(spec) ?? spec;
@@ -158,7 +174,7 @@ export class ObjScriptInterpreter<C = undefined> {
     const pending = Object.values(root.imports ?? {});
     while (pending.length) {
       const key = pending.pop()!;
-      if (key.startsWith("host/") || key in out) continue;
+      if (key in this.capabilities || key in out) continue;
       const m = this.modules.get(key);
       if (!m) continue; // left for the checker to report as unknown_module
       const resolved = this.resolve(m.source, m.baseDir);
@@ -176,7 +192,7 @@ export class ObjScriptInterpreter<C = undefined> {
 
     const deps = this.depsFor(resolved);
     try {
-      const c = compile(key, JSON.stringify(deps));
+      const c = compile(key, JSON.stringify(deps), this.grants);
       this.cache.set(key, c);
       return c;
     } catch (e) {

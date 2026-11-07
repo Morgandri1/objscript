@@ -130,7 +130,7 @@ fn parse_stmt(v: &J, path: &str) -> R<Stmt> {
     let o = as_obj(v, path)
         .map_err(|d| d.hint("a statement is an object like {\"let\": ...}, {\"if\": ...} or {\"return\": ...}"))?;
     let kw = STMT_KW.into_iter().find(|k| o.contains_key(*k)).ok_or_else(|| {
-        Diagnostic::new(path, "unknown_statement", "statement must have one of: let, set, if, while, return, do")
+        Diagnostic::new(path, "unknown_statement", "statement must have one of: let, set, store, if, while, return, do")
             .hint("to call a function for its side effects, wrap it: {\"do\": {\"call\": ...}}")
     })?;
 
@@ -152,6 +152,13 @@ fn parse_stmt(v: &J, path: &str) -> R<Stmt> {
             let name = ident_val(&o["set"], &join(path, "set"))?;
             let value = parse_expr(req(o, path, "value")?, &join(path, "value"))?;
             StmtKind::Set { name, value }
+        }
+        "store" => {
+            check_keys(o, path, &["store", "at", "value"])?;
+            let name = ident_val(&o["store"], &join(path, "store"))?;
+            let at = parse_expr(req(o, path, "at")?, &join(path, "at"))?;
+            let value = parse_expr(req(o, path, "value")?, &join(path, "value"))?;
+            StmtKind::Store { name, at, value }
         }
         "if" => {
             check_keys(o, path, &["if", "then", "else"])?;
@@ -249,11 +256,12 @@ fn parse_node(o: &Map<String, J>, path: &str) -> R<ExprKind> {
             let at = match req(o, path, "at")? {
                 J::String(s) => Key::Field(s.clone()),
                 J::Number(n) if n.as_i64().is_some() => Key::Index(n.as_i64().expect("checked")),
+                J::Object(_) => Key::Dyn(Box::new(parse_expr(&o["at"], &join(path, "at"))?)),
                 other => {
                     return Err(Diagnostic::new(
                         join(path, "at"),
                         "invalid_key",
-                        format!("\"at\" must be a field name or integer index, found {}", kind(other)),
+                        format!("\"at\" must be a field name, an integer index or an expression, found {}", kind(other)),
                     ))
                 }
             };
